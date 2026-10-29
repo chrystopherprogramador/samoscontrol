@@ -1,0 +1,11 @@
+@model List<Contract>
+@{ ViewData["Title"] = "Contratos"; }
+<div class="d-flex gap-2 mb-3">
+    <form method="get" class="d-flex gap-2 flex-grow-1"><select name="status" class="form-select" style="max-width:220px" data-autosubmit="1"><option value="">Todos status</option>
+        @foreach (var s in Enum.GetValues<ContractStatus>()) { <option value="@s" selected="@(ViewBag.Status == s)">@s</option> }</select></form>
+    @if (Perms.Has(Perm.ContractsCreate)) { <a class="btn btn-primary" asp-action="Create"><i class="bi bi-plus-lg"></i> Novo contrato</a> }
+</div>
+<div class="card"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>#</th><th>Título</th><th>Cliente</th><th>Valor</th><th>Status</th><th>Criado</th><th>Assinado</th></tr></thead><tbody>
+@foreach (var c in Model) { <tr><td>@c.Id</td><td><a asp-action="Details" asp-route-id="@c.Id" class="text-decoration-none fw-semibold">@c.Title</a></td><td>@(c.Customer?.Name ?? (c.Kind == "PARCERIA" ? "Parceria (vendedor)" : ""))</td><td>@c.Value.Money()</td><td><span class="badge @ViewHelpers.Badge(c.Status.ToString())">@c.Status</span></td><td class="small">@c.CreatedAt.Local()</td><td class="small">@c.SignedAt.Local()</td></tr> }
+@if (Model.Count == 0) { <tr><td colspan="7" class="text-center text-muted py-4">Nenhum contrato.</td></tr> }
+</tbody></table></div></div>

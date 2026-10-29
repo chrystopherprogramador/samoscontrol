@@ -1,0 +1,10 @@
+@model TemplateForm
+@{ ViewData["Title"] = Model.Id == 0 ? "Novo modelo" : "Editar modelo"; }
+<form method="post" class="card"><div class="card-body">
+    <div class="mb-3"><label class="form-label">Nome *</label><input asp-for="Name" class="form-control" required maxlength="150" /></div>
+    <div class="mb-3"><label class="form-label">Texto do contrato *</label><textarea asp-for="Body" class="form-control font-monospace" rows="22" required></textarea>
+        <div class="form-text">Linhas iniciadas com <code>#&nbsp;</code> viram títulos. Placeholders disponíveis:
+        <code>{{CLIENTE_NOME}}</code> <code>{{CLIENTE_CPF_CNPJ}}</code> <code>{{CLIENTE_ENDERECO}}</code> <code>{{CLIENTE_EMAIL}}</code>
+        <code>{{EMPRESA_NOME}}</code> <code>{{EMPRESA_CNPJ}}</code> <code>{{SERVICO}}</code> <code>{{VALOR}}</code> <code>{{VENCIMENTO}}</code> <code>{{DATA_CONTRATO}}</code></div></div>
+    <div class="form-check"><input asp-for="IsActive" class="form-check-input" /><label class="form-check-label">Modelo ativo</label></div>
+</div><div class="card-footer"><button class="btn btn-primary">Salvar</button> <a class="btn btn-outline-secondary" asp-action="Index">Cancelar</a></div></form>

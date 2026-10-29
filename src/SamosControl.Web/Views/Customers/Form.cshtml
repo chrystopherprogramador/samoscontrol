@@ -1,0 +1,15 @@
+@model CustomerForm
+@{ ViewData["Title"] = Model.Id == 0 ? "Novo cliente" : "Editar cliente"; }
+<form method="post" class="card"><div class="card-body"><div class="row g-3">
+    <div class="col-md-8"><label class="form-label">Nome *</label><input asp-for="Name" class="form-control" required maxlength="200" /></div>
+    <div class="col-md-4"><label class="form-label">CPF/CNPJ</label><input asp-for="Document" class="form-control" maxlength="30" /></div>
+    <div class="col-md-4"><label class="form-label">E-mail</label><input asp-for="Email" type="email" class="form-control" maxlength="200" /></div>
+    <div class="col-md-4"><label class="form-label">Telefone</label><input asp-for="Phone" class="form-control" maxlength="40" /></div>
+    <div class="col-md-4"><label class="form-label">WhatsApp</label><input asp-for="WhatsApp" class="form-control" maxlength="40" /></div>
+    <div class="col-md-6"><label class="form-label">Endereço</label><input asp-for="Address" class="form-control" maxlength="300" /></div>
+    <div class="col-md-3"><label class="form-label">Cidade</label><input asp-for="City" class="form-control" maxlength="100" /></div>
+    <div class="col-md-1"><label class="form-label">UF</label><input asp-for="State" class="form-control" maxlength="2" /></div>
+    <div class="col-md-2"><label class="form-label">CEP</label><input asp-for="PostalCode" class="form-control" maxlength="10" /></div>
+    <div class="col-12"><label class="form-label">Observações</label><textarea asp-for="Notes" class="form-control" rows="3" maxlength="4000"></textarea></div>
+    <div class="col-12"><div class="form-check"><input asp-for="IsActive" class="form-check-input" /><label class="form-check-label">Cliente ativo</label></div></div>
+</div></div><div class="card-footer"><button class="btn btn-primary">Salvar</button> <a class="btn btn-outline-secondary" asp-action="Index">Cancelar</a></div></form>

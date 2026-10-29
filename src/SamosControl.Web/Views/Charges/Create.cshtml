@@ -1,0 +1,11 @@
+@model ChargeForm
+@{ ViewData["Title"] = "Nova cobrança"; var custs = (List<Customer>)ViewBag.Customers; }
+<form method="post" class="card" style="max-width:760px"><div class="card-body"><div class="row g-3">
+    <div class="col-md-8"><label class="form-label">Cliente *</label><select asp-for="CustomerId" class="form-select" required><option value="">Selecione</option>@foreach (var c in custs) { <option value="@c.Id" selected="@(Model.CustomerId == c.Id)">@c.Name</option> }</select></div>
+    <div class="col-md-4"><label class="form-label">Contrato (ID, opcional)</label><input asp-for="ContractId" type="number" class="form-control" /></div>
+    <div class="col-md-6"><label class="form-label">Serviço</label><input asp-for="Service" class="form-control" maxlength="200" /></div>
+    <div class="col-md-3"><label class="form-label">Valor (R$) *</label><input asp-for="Amount" type="number" step="0.01" min="0.01" class="form-control" required /></div>
+    <div class="col-md-3"><label class="form-label">Vencimento *</label><input asp-for="Due" type="date" class="form-control" required /></div>
+    <div class="col-md-4"><label class="form-label">Tipo</label><select asp-for="Type" class="form-select">@foreach (var t in Enum.GetValues<BillingType>()) { <option value="@t">@t</option> }</select></div>
+    <div class="col-12"><label class="form-label">Descrição</label><input asp-for="Description" class="form-control" maxlength="500" /></div>
+</div></div><div class="card-footer"><button class="btn btn-primary">Gerar cobrança</button> <a class="btn btn-outline-secondary" asp-action="Index">Cancelar</a></div></form>

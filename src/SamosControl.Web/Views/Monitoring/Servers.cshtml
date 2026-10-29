@@ -1,0 +1,14 @@
+@model List<Server>
+@{ ViewData["Title"] = "Servidores"; }
+@if (Perms.Has(Perm.MonitoringManage)) { <div class="mb-3"><a class="btn btn-primary" asp-action="EditServer"><i class="bi bi-plus-lg"></i> Novo servidor</a> <a class="btn btn-outline-primary" asp-action="EditService"><i class="bi bi-plus-lg"></i> Novo serviço</a></div> }
+<div class="card"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Nome</th><th>Host</th><th>Tipo</th><th>Porta</th><th>Serviços</th><th></th></tr></thead><tbody>
+@foreach (var s in Model)
+{
+    <tr><td>@s.Name</td><td>@s.Host</td><td>@s.Type</td><td>@s.Port</td>
+        <td>@foreach (var sv in s.Services) { <span class="badge @ViewHelpers.Badge(sv.Status.ToString())">@sv.Name</span> }</td>
+        <td class="text-nowrap">@if (Perms.Has(Perm.MonitoringManage)) {
+            <a class="btn btn-sm btn-outline-primary" asp-action="EditServer" asp-route-id="@s.Id">Editar</a>
+            <form method="post" asp-action="DeleteServer" asp-route-id="@s.Id" class="d-inline" data-confirm="Remover servidor e seus serviços?"><button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form> }</td></tr>
+}
+@if (Model.Count == 0) { <tr><td colspan="6" class="text-center text-muted py-4">Nenhum servidor cadastrado.</td></tr> }
+</tbody></table></div></div>

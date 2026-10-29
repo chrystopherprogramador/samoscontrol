@@ -1,0 +1,10 @@
+@model AutomationExecution
+@{ ViewData["Title"] = "Execução #" + Model.Id; }
+<div class="card"><div class="card-body">
+    <p><strong>@Model.Job?.Name</strong> · @Model.Trigger · <span class="badge @ViewHelpers.Badge(Model.Status.ToString())">@Model.Status</span> · @Model.StartedAt.Local() → @Model.FinishedAt.Local()</p>
+    <p class="small">@Model.Result</p>
+    <table class="table table-sm"><thead><tr><th>Hora</th><th>Nível</th><th>Mensagem</th></tr></thead><tbody>
+    @foreach (var l in Model.Logs.OrderBy(l => l.At)) { <tr><td class="small text-nowrap">@l.At.Local("HH:mm:ss")</td><td><span class="badge @(l.Level == "ERROR" ? "bg-danger" : l.Level == "WARN" ? "bg-warning text-dark" : "bg-secondary")">@l.Level</span></td><td>@l.Message</td></tr> }
+    </tbody></table>
+    <a class="btn btn-outline-secondary" asp-action="Index">Voltar</a>
+</div></div>

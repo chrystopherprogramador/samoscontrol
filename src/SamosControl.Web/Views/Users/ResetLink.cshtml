@@ -1,0 +1,7 @@
+@model User
+@{ ViewData["Title"] = "Link de redefinição"; }
+<div class="card" style="max-width:760px"><div class="card-body">
+    <p>Link de redefinição de senha para <strong>@Model.Email</strong> (válido por tempo limitado, uso único). Envie ao usuário por um canal seguro — o envio automático por e-mail depende da configuração SMTP.</p>
+    <input class="form-control" readonly value="@ViewBag.Link" data-select="1" />
+    <a class="btn btn-outline-secondary mt-3" asp-action="Index">Voltar</a>
+</div></div>

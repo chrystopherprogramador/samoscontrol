@@ -1,0 +1,38 @@
+@{ ViewData["Title"] = "Nova automação"; }
+<div class="row g-3">
+<div class="col-lg-7">
+<form method="post" class="card"><div class="card-body"><div class="row g-3">
+    <div class="col-md-8"><label class="form-label">Nome *</label><input id="jobName" name="name" class="form-control" required maxlength="150" /></div>
+    <div class="col-md-4"><label class="form-label">Tipo *</label><select id="jobType" name="type" class="form-select">@foreach (var t in Enum.GetValues<JobType>()) { <option value="@t">@t</option> }</select></div>
+    <div class="col-12"><div id="typeHelp" class="alert alert-info mb-0"></div></div>
+    <div class="col-md-6"><label class="form-label">Primeira execução (horário local)</label><input id="nextRun" name="nextRun" type="datetime-local" class="form-control" /></div>
+    <div class="col-md-6"><label class="form-label">Repetir a cada (minutos)</label><input id="recurrence" name="recurrenceMinutes" type="number" min="1" class="form-control" placeholder="vazio = execução única" /></div>
+    <div class="col-12">
+        <div class="d-flex flex-wrap gap-1"><button type="button" class="btn btn-sm btn-outline-secondary" data-rec="15">15 min</button><button type="button" class="btn btn-sm btn-outline-secondary" data-rec="60">1 hora</button><button type="button" class="btn btn-sm btn-outline-secondary" data-rec="360">6 horas</button><button type="button" class="btn btn-sm btn-outline-secondary" data-rec="1440">Todo dia</button><button type="button" class="btn btn-sm btn-outline-secondary" data-rec="10080">Toda semana</button></div>
+        <div id="recHelp" class="form-text"></div>
+    </div>
+    <div class="col-12"><label class="form-label">Configuração (JSON)</label><textarea id="configJson" name="configJson" class="form-control font-monospace" rows="5"></textarea></div>
+</div></div><div class="card-footer"><button class="btn btn-primary">Criar</button> <a class="btn btn-outline-secondary" asp-action="Index">Cancelar</a></div></form>
+</div>
+<div class="col-lg-5">
+<div class="card"><div class="card-header"><i class="bi bi-lightbulb"></i> Guia rápido</div><div class="card-body small">
+    <ol class="ps-3">
+        <li><strong>Escolha o tipo</strong>: o quadro azul explica o que ele faz e quais campos usa.</li>
+        <li>Clique em <strong>Usar exemplo</strong> para preencher a configuração; troque números e textos.</li>
+        <li><strong>Quando roda</strong>: informe a primeira execução e/ou a repetição. Só repetição = a primeira execução acontece depois do intervalo. Nada preenchido = só roda ao clicar em ▶.</li>
+        <li>Depois de criar, clique em <strong>▶ Executar agora</strong> para testar e veja o resultado e o passo a passo na execução.</li>
+    </ol>
+    <hr />
+    <div class="fw-semibold mb-1">Ideias de automações</div>
+    <ul class="ps-3 mb-0">
+        <li><strong>Resumo da manhã</strong>: Relatório, todo dia, com seu WhatsApp em <code>phones</code>.</li>
+        <li><strong>Cobrar equipe</strong>: Lembrete diário "Ligar para leads em PROPOSTA".</li>
+        <li><strong>Aviso ao cliente</strong>: Enviar WhatsApp semanal com um texto fixo.</li>
+        <li><strong>Importar leads</strong>: Sincronizar leads a cada 60 min (ative a automação de sistema).</li>
+        <li><strong>Cobranças em dia</strong>: Cobranças a cada 30 min.</li>
+    </ul>
+    <div class="text-muted mt-2">Os horários de repetição contam a partir da execução anterior. Use telefones só com dígitos: <code>5562999999999</code> (55 = Brasil, 62 = DDD).</div>
+</div></div>
+</div>
+</div>
+@section Scripts { <script src="~/js/automation-guide.js"></script> }

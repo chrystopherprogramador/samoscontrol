@@ -1,0 +1,22 @@
+@model List<AutomationJob>
+@{ ViewData["Title"] = "Automações"; var execs = (List<AutomationExecution>)ViewBag.Executions; }
+@if (Perms.Has(Perm.AutomationManage)) { <div class="mb-3"><a class="btn btn-primary" asp-action="Create"><i class="bi bi-plus-lg"></i> Nova automação</a></div> }
+<div class="card mb-3"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Nome</th><th>Tipo</th><th>Recorrência</th><th>Próxima</th><th>Última</th><th>Status</th><th></th></tr></thead><tbody>
+@foreach (var j in Model)
+{
+    <tr><td>@j.Name @if (j.IsSystem) { <span class="badge bg-secondary">sistema</span> }</td><td><code>@j.Type</code></td><td>@(j.RecurrenceMinutes.HasValue ? j.RecurrenceMinutes + " min" : "única")</td>
+        <td class="small">@j.NextRunAt.Local()</td><td class="small">@j.LastRunAt.Local() @if (j.LastStatus != null) { <span class="badge @ViewHelpers.Badge(j.LastStatus.ToString()!)">@j.LastStatus</span> }</td>
+        <td><span class="badge @(j.IsEnabled ? "bg-success" : "bg-secondary")">@(j.IsEnabled ? "Ativa" : "Desabilitada")</span></td>
+        <td class="text-nowrap">
+        @if (Perms.Has(Perm.AutomationManage))
+        {
+            <form method="post" asp-action="Run" asp-route-id="@j.Id" class="d-inline"><button class="btn btn-sm btn-outline-primary" title="Executar agora"><i class="bi bi-play-fill"></i></button></form>
+            <form method="post" asp-action="Toggle" asp-route-id="@j.Id" class="d-inline"><button class="btn btn-sm btn-outline-secondary">@(j.IsEnabled ? "Desabilitar" : "Habilitar")</button></form>
+            @if (!j.IsSystem) { <form method="post" asp-action="Delete" asp-route-id="@j.Id" class="d-inline" data-confirm="Excluir esta automação e seu histórico?"><button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form> }
+        }
+        </td></tr>
+}
+</tbody></table></div></div>
+<div class="card"><div class="card-header">Execuções recentes</div><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>#</th><th>Automação</th><th>Início</th><th>Origem</th><th>Status</th><th>Resultado</th></tr></thead><tbody>
+@foreach (var e in execs) { <tr><td><a asp-action="Details" asp-route-id="@e.Id">@e.Id</a></td><td>@e.Job?.Name</td><td class="small">@e.StartedAt.Local()</td><td>@e.Trigger</td><td><span class="badge @ViewHelpers.Badge(e.Status.ToString())">@e.Status</span></td><td class="small">@((e.Result ?? "").Truncate(100))</td></tr> }
+</tbody></table></div></div>

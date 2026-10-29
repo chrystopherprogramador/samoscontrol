@@ -1,0 +1,11 @@
+@model List<Charge>
+@{ ViewData["Title"] = "Cobranças"; }
+<div class="d-flex gap-2 mb-3">
+    <form method="get" class="d-flex gap-2 flex-grow-1"><select name="status" class="form-select" style="max-width:220px" data-autosubmit="1"><option value="">Todos status</option>
+        @foreach (var s in Enum.GetValues<ChargeStatus>()) { <option value="@s" selected="@(ViewBag.Status == s)">@s</option> }</select></form>
+    @if (Perms.Has(Perm.BillingCreate)) { <a class="btn btn-primary" asp-action="Create"><i class="bi bi-plus-lg"></i> Nova cobrança</a> }
+</div>
+<div class="card"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>#</th><th>Cliente</th><th>Serviço</th><th>Valor</th><th>Vencimento</th><th>Tipo</th><th>Status</th></tr></thead><tbody>
+@foreach (var c in Model) { <tr><td><a asp-action="Details" asp-route-id="@c.Id">@c.Id</a></td><td>@c.Customer?.Name</td><td>@c.ServiceName</td><td>@c.Amount.Money()</td><td>@c.DueDate.Local("dd/MM/yyyy")</td><td>@c.BillingType</td><td><span class="badge @ViewHelpers.Badge(c.Status.ToString())">@c.Status</span></td></tr> }
+@if (Model.Count == 0) { <tr><td colspan="7" class="text-center text-muted py-4">Nenhuma cobrança.</td></tr> }
+</tbody></table></div></div>

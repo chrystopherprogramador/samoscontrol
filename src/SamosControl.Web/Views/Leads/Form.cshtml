@@ -1,0 +1,25 @@
+@model LeadForm
+@{
+    ViewData["Title"] = Model.Id == 0 ? "Novo lead" : "Editar lead";
+    var sources = (List<LeadSource>)ViewBag.Sources; var users = (List<User>)ViewBag.Users;
+}
+<form method="post" class="card"><div class="card-body"><div class="row g-3">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <div class="col-md-6"><label class="form-label">Nome *</label><input asp-for="Name" class="form-control" required maxlength="200" /></div>
+    <div class="col-md-6"><label class="form-label">Empresa</label><input asp-for="CompanyName" class="form-control" maxlength="200" /></div>
+    <div class="col-md-4"><label class="form-label">Telefone</label><input asp-for="Phone" class="form-control" maxlength="40" /></div>
+    <div class="col-md-4"><label class="form-label">WhatsApp</label><input asp-for="WhatsApp" class="form-control" maxlength="40" /></div>
+    <div class="col-md-4"><label class="form-label">E-mail</label><input asp-for="Email" type="email" class="form-control" maxlength="200" /></div>
+    <div class="col-md-6"><label class="form-label">Endereço</label><input asp-for="Address" class="form-control" maxlength="300" /></div>
+    <div class="col-md-3"><label class="form-label">Cidade</label><input asp-for="City" class="form-control" maxlength="100" /></div>
+    <div class="col-md-3"><label class="form-label">UF</label><input asp-for="State" class="form-control" maxlength="2" /></div>
+    <div class="col-md-4"><label class="form-label">Segmento</label><input asp-for="Segment" class="form-control" maxlength="100" /></div>
+    <div class="col-md-4"><label class="form-label">Website</label><input asp-for="Website" class="form-control" maxlength="300" /></div>
+    <div class="col-md-4"><label class="form-label">Origem</label><select asp-for="SourceId" class="form-select"><option value="">-</option>
+        @foreach (var s in sources) { <option value="@s.Id" selected="@(Model.SourceId == s.Id)">@s.Name</option> }</select></div>
+    <div class="col-md-6"><label class="form-label">Responsável</label><select asp-for="AssignedUserId" class="form-select"><option value="">-</option>
+        @foreach (var u in users) { <option value="@u.Id" selected="@(Model.AssignedUserId == u.Id)">@u.Name</option> }</select></div>
+    <div class="col-md-6"><label class="form-label">Tags (separadas por vírgula)</label><input asp-for="TagsText" class="form-control" /></div>
+    <div class="col-12"><label class="form-label">Observações</label><textarea asp-for="Notes" class="form-control" rows="3" maxlength="4000"></textarea></div>
+</div></div>
+<div class="card-footer"><button class="btn btn-primary">Salvar</button> <a class="btn btn-outline-secondary" asp-action="Index">Cancelar</a></div></form>

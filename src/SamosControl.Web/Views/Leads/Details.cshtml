@@ -1,0 +1,77 @@
+@model Lead
+@{ ViewData["Title"] = Model.Name; }
+<div class="row g-3">
+<div class="col-lg-5"><div class="card"><div class="card-body">
+    <div class="d-flex justify-content-between"><h2 class="h5">@Model.Name</h2><span class="badge @ViewHelpers.Badge(Model.Status.ToString()) align-self-start">@Model.Status</span></div>
+    <dl class="row mb-0 small">
+        <dt class="col-4">Empresa</dt><dd class="col-8">@Model.CompanyName</dd>
+        <dt class="col-4">Telefone</dt><dd class="col-8">@Model.Phone</dd>
+        <dt class="col-4">WhatsApp</dt><dd class="col-8">@Model.WhatsApp</dd>
+        <dt class="col-4">E-mail</dt><dd class="col-8">@Model.Email</dd>
+        <dt class="col-4">Endereço</dt><dd class="col-8">@Model.Address @Model.City @Model.State</dd>
+        <dt class="col-4">Segmento</dt><dd class="col-8">@Model.Segment</dd>
+        <dt class="col-4">Website</dt><dd class="col-8">@Model.Website</dd>
+        <dt class="col-4">Origem</dt><dd class="col-8">@Model.Source?.Name</dd>
+        <dt class="col-4">Responsável</dt><dd class="col-8">@Model.AssignedUser?.Name</dd>
+        <dt class="col-4">Vendedor (WhatsApp)</dt><dd class="col-8">@(ViewBag.OwnerName ?? "— livre —")</dd>
+        <dt class="col-4">Criado</dt><dd class="col-8">@Model.CreatedAt.Local()</dd>
+        <dt class="col-4">Última interação</dt><dd class="col-8">@Model.LastInteractionAt.Local()</dd>
+        <dt class="col-4">Tags</dt><dd class="col-8">@foreach (var t in Model.Tags) { <span class="badge bg-secondary">@t.Tag?.Name</span> }</dd>
+        <dt class="col-4">Observações</dt><dd class="col-8" style="white-space:pre-wrap">@Model.Notes</dd>
+    </dl>
+</div>
+@if (Perms.Has(Perm.CrmEdit))
+{
+<div class="card-footer d-flex flex-wrap gap-2">
+    <a class="btn btn-sm btn-outline-primary" asp-action="Edit" asp-route-id="@Model.Id">Editar</a>
+    <form method="post" asp-action="Status" asp-route-id="@Model.Id" class="d-flex gap-1"><select name="status" class="form-select form-select-sm">
+        @foreach (var s in Enum.GetValues<LeadStatus>()) { <option value="@s" selected="@(Model.Status == s)">@s</option> }</select><button class="btn btn-sm btn-outline-secondary">Mover</button></form>
+    @if (Model.CustomerId == null) { <form method="post" asp-action="Convert" asp-route-id="@Model.Id"><button class="btn btn-sm btn-success">Converter em cliente</button></form> }
+    else { <a class="btn btn-sm btn-success" asp-controller="Customers" asp-action="Details" asp-route-id="@Model.CustomerId">Ver cliente</a> }
+    @if (Perms.Has(Perm.CrmDelete) && Model.CustomerId == null) { <form method="post" asp-action="Delete" asp-route-id="@Model.Id" data-confirm="Excluir este lead?"><button class="btn btn-sm btn-outline-danger">Excluir</button></form> }
+</div>
+}
+@if (Perms.Has(Perm.WhatsAppSend))
+{
+    var sellers = (List<Seller>)ViewBag.Sellers;
+    var mine = (int?)ViewBag.MySellerId;
+    var ownedByOther = Model.SellerId.HasValue && Model.SellerId != mine && !Perms.Has(Perm.WhatsAppAll);
+<div class="card-footer">
+    @if (ownedByOther)
+    {
+        <div class="small text-warning mb-2">Lead em atendimento por <b>@ViewBag.OwnerName</b>. Só o administrador pode liberar.</div>
+        <form method="post" asp-controller="WhatsApp" asp-action="RequestLead" asp-route-id="@Model.Id"><button class="btn btn-sm btn-outline-warning">Solicitar liberação</button></form>
+    }
+    else
+    {
+        <form method="post" asp-controller="WhatsApp" asp-action="LeadChat" asp-route-id="@Model.Id" class="d-flex gap-2">
+            @if (Perms.Has(Perm.WhatsAppAll))
+            {
+                <select name="sellerId" class="form-select form-select-sm" required><option value="">Atender como…</option>@foreach (var s in sellers) { <option value="@s.Id" selected="@(Model.SellerId == s.Id)">@s.Name</option> }</select>
+            }
+            <button class="btn btn-sm btn-success text-nowrap"><i class="bi bi-whatsapp"></i> Chamar no WhatsApp</button>
+        </form>
+    }
+    @if (Perms.Has(Perm.WhatsAppAll) && Model.SellerId.HasValue)
+    {
+        <form method="post" asp-controller="WhatsApp" asp-action="AssignLead" asp-route-id="@Model.Id" class="mt-2"><button class="btn btn-sm btn-outline-secondary">Liberar lead (remover vendedor)</button></form>
+    }
+</div>
+}
+</div></div>
+<div class="col-lg-7"><div class="card"><div class="card-header">Histórico de interações</div><div class="card-body">
+    @if (Perms.Has(Perm.CrmEdit))
+    {
+    <form method="post" asp-action="Interaction" asp-route-id="@Model.Id" class="row g-2 mb-3">
+        <div class="col-md-3"><select name="type" class="form-select">@foreach (var t in Enum.GetValues<InteractionType>().Where(x => x != InteractionType.Sistema)) { <option value="@t">@t</option> }</select></div>
+        <div class="col-md-7"><input name="text" class="form-control" placeholder="O que aconteceu?" required maxlength="4000" /></div>
+        <div class="col-md-2"><button class="btn btn-primary w-100">Registrar</button></div>
+    </form>
+    }
+    <ul class="list-group list-group-flush">
+    @foreach (var i in Model.Interactions.OrderByDescending(i => i.CreatedAt))
+    { <li class="list-group-item px-0"><div class="d-flex justify-content-between"><span><span class="badge bg-secondary">@i.Type</span> @i.UserName</span><small class="text-muted">@i.CreatedAt.Local()</small></div><div style="white-space:pre-wrap">@i.Description</div></li> }
+    @if (!Model.Interactions.Any()) { <li class="list-group-item px-0 text-muted">Sem interações.</li> }
+    </ul>
+</div></div></div>
+</div>

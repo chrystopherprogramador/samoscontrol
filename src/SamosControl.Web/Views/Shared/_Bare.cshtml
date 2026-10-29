@@ -1,0 +1,27 @@
+@{
+    Layout = null;
+    string Title = ViewData["Title"] as string ?? "SAMOS CONTROL";
+    var flash = (TempData["flash"] as string)?.Split('|', 2);
+}
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>@Title · SAMOS CONTROL</title>
+    <script src="~/js/theme.js"></script>
+    <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/lib/icons/bootstrap-icons.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" />
+</head>
+<body class="bare">
+<div class="container py-5" style="max-width:@(ViewData["Width"] ?? "440px")">
+    <div class="text-center mb-4"><span class="brand fs-3"><i class="bi bi-hexagon-fill"></i> SAMOS <span>CONTROL</span></span></div>
+    @if (flash is { Length: 2 }) { <div class="alert alert-@flash[0]">@flash[1]</div> }
+    @RenderBody()
+</div>
+<script src="~/lib/bootstrap/js/bootstrap.bundle.min.js"></script>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

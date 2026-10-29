@@ -1,0 +1,28 @@
+@model Charge
+@{ ViewData["Title"] = "Cobrança #" + Model.Id; }
+<div class="row g-3">
+<div class="col-lg-6"><div class="card"><div class="card-body">
+    <h2 class="h5">@Model.Amount.Money() <span class="badge @ViewHelpers.Badge(Model.Status.ToString())">@Model.Status</span></h2>
+    <dl class="row small mb-0">
+        <dt class="col-4">Cliente</dt><dd class="col-8"><a asp-controller="Customers" asp-action="Details" asp-route-id="@Model.CustomerId">@Model.Customer?.Name</a></dd>
+        <dt class="col-4">Serviço</dt><dd class="col-8">@Model.ServiceName</dd>
+        <dt class="col-4">Contrato</dt><dd class="col-8">@Model.ContractId</dd>
+        <dt class="col-4">Vencimento</dt><dd class="col-8">@Model.DueDate.Local("dd/MM/yyyy")</dd>
+        <dt class="col-4">Tipo</dt><dd class="col-8">@Model.BillingType</dd>
+        <dt class="col-4">Provedor</dt><dd class="col-8">@(Model.Provider == "EFI" ? "Efí" : "Asaas") <span class="text-muted">@Model.AsaasId</span></dd>
+        <dt class="col-4">Pago em</dt><dd class="col-8">@Model.PaidAt.Local() @(Model.PaidAmount.HasValue ? Model.PaidAmount.Value.Money() : "")</dd>
+        <dt class="col-4">Fatura</dt><dd class="col-8">@if (!string.IsNullOrEmpty(Model.InvoiceUrl)) { <a href="@Model.InvoiceUrl" target="_blank" rel="noopener noreferrer">Abrir</a> }</dd>
+    </dl></div>
+    <div class="card-footer d-flex gap-2 flex-wrap">
+        <form method="post" asp-action="Refresh" asp-route-id="@Model.Id"><button class="btn btn-sm btn-outline-primary">Atualizar status</button></form>
+        @if (Perms.Has(Perm.WhatsAppSend)) { <form method="post" asp-action="SendWhatsApp" asp-route-id="@Model.Id"><button class="btn btn-sm btn-outline-success"><i class="bi bi-whatsapp"></i> Enviar por WhatsApp</button></form> }
+        @if (Perms.Has(Perm.BillingCancel) && Model.Status is ChargeStatus.Pendente or ChargeStatus.Vencido) { <form method="post" asp-action="Cancel" asp-route-id="@Model.Id" data-confirm="Cancelar esta cobrança?"><button class="btn btn-sm btn-outline-danger">Cancelar</button></form> }
+    </div></div></div>
+@if (!string.IsNullOrEmpty(Model.PixPayload))
+{
+<div class="col-lg-6"><div class="card"><div class="card-header">PIX</div><div class="card-body text-center">
+    @if (!string.IsNullOrEmpty(Model.PixQrCodeBase64)) { <img src="data:image/png;base64,@Model.PixQrCodeBase64" alt="QR Code PIX" style="max-width:240px" /> }
+    <label class="form-label small mt-2 d-block text-start">Copia e cola</label><textarea class="form-control small" rows="4" readonly data-select="1">@Model.PixPayload</textarea>
+</div></div></div>
+}
+</div>

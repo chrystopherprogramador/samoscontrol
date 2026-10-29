@@ -1,0 +1,8 @@
+@model MonitoredService
+@{ ViewData["Title"] = "Histórico · " + Model.Name; var checks = (List<ServiceCheck>)ViewBag.Checks; var ordered = checks.OrderBy(c => c.At).ToList(); }
+<div class="card mb-3"><div class="card-header">Latência (últimas @checks.Count checagens)</div><div class="card-body">
+    <canvas data-chart="line" data-label="ms" data-labels="@System.Text.Json.JsonSerializer.Serialize(ordered.Select(c => c.At.Local("HH:mm")))" data-values="@System.Text.Json.JsonSerializer.Serialize(ordered.Select(c => c.LatencyMs ?? 0))"></canvas></div></div>
+<div class="card"><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Hora</th><th>Status</th><th>HTTP</th><th>Latência</th><th>Erro</th></tr></thead><tbody>
+@foreach (var c in checks) { <tr><td class="small">@c.At.Local("dd/MM HH:mm:ss")</td><td><span class="badge @ViewHelpers.Badge(c.Status.ToString())">@c.Status</span></td><td>@c.StatusCode</td><td>@(c.LatencyMs.HasValue ? c.LatencyMs + " ms" : "-")</td><td class="small">@c.Error</td></tr> }
+</tbody></table></div></div>
+<a class="btn btn-outline-secondary mt-3" asp-action="Services">Voltar</a>

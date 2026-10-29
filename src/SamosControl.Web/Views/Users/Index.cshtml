@@ -1,0 +1,9 @@
+@model List<User>
+@{ ViewData["Title"] = "Usuários"; }
+<div class="mb-3"><a class="btn btn-primary" asp-action="Create"><i class="bi bi-plus-lg"></i> Novo usuário</a></div>
+<div class="card"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Status</th><th>Último login</th><th></th></tr></thead><tbody>
+@foreach (var u in Model)
+{ <tr><td>@u.Name</td><td>@u.Email</td><td><span class="badge bg-secondary">@u.Role?.Name</span></td><td><span class="badge @(u.IsActive ? "bg-success" : "bg-secondary")">@(u.IsActive ? "Ativo" : "Inativo")</span></td><td class="small">@u.LastLoginAt.Local()</td>
+  <td class="text-nowrap"><a class="btn btn-sm btn-outline-primary" asp-action="Edit" asp-route-id="@u.Id">Editar</a>
+  <form method="post" asp-action="ResetLink" asp-route-id="@u.Id" class="d-inline"><button class="btn btn-sm btn-outline-secondary" title="Gerar link de redefinição de senha"><i class="bi bi-key"></i></button></form></td></tr> }
+</tbody></table></div></div>

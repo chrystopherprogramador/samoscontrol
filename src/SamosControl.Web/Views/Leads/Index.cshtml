@@ -1,0 +1,42 @@
+@model List<Lead>
+@{
+    ViewData["Title"] = "Leads";
+    var sources = (List<LeadSource>)ViewBag.Sources;
+    int pg = ViewBag.Page, pages = ViewBag.Pages;
+}
+<div class="d-flex flex-wrap gap-2 mb-3">
+    <form class="d-flex flex-wrap gap-2 flex-grow-1" method="get">
+        <input name="q" value="@ViewBag.Q" class="form-control" style="max-width:260px" placeholder="Buscar nome, telefone, e-mail, cidade..." />
+        <select name="status" class="form-select" style="max-width:160px"><option value="">Todos status</option>
+            @foreach (var s in Enum.GetValues<LeadStatus>()) { <option value="@s" selected="@(ViewBag.Status == s)">@s</option> }</select>
+        <select name="sourceId" class="form-select" style="max-width:180px"><option value="">Todas origens</option>
+            @foreach (var s in sources) { <option value="@s.Id" selected="@(ViewBag.SourceId == s.Id)">@s.Name</option> }</select>
+        <button class="btn btn-outline-primary"><i class="bi bi-search"></i></button>
+    </form>
+    <a class="btn btn-outline-secondary" asp-action="Searches"><i class="bi bi-geo-alt"></i> Google Maps</a>
+    @if (Perms.Has(Perm.CrmEdit)) { <a class="btn btn-primary" asp-action="Create"><i class="bi bi-plus-lg"></i> Novo lead</a> }
+</div>
+<div class="card"><div class="table-responsive"><table class="table table-hover mb-0">
+<thead><tr><th>Nome</th><th>Contato</th><th>Cidade</th><th>Origem</th><th>Status</th><th>Responsável</th><th>Criado</th></tr></thead><tbody>
+@foreach (var l in Model)
+{
+    <tr>
+        <td><a asp-action="Details" asp-route-id="@l.Id" class="fw-semibold text-decoration-none">@l.Name</a>
+            <div class="small text-muted">@l.Segment @foreach (var t in l.Tags) { <span class="badge bg-secondary">@t.Tag?.Name</span> }</div></td>
+        <td class="small">@l.Phone<br />@l.Email</td>
+        <td>@l.City@(l.State != null ? "/" + l.State : "")</td>
+        <td>@l.Source?.Name</td>
+        <td><span class="badge @ViewHelpers.Badge(l.Status.ToString())">@l.Status</span></td>
+        <td>@l.AssignedUser?.Name</td>
+        <td class="small text-nowrap">@l.CreatedAt.Local("dd/MM/yy HH:mm")</td>
+    </tr>
+}
+@if (Model.Count == 0) { <tr><td colspan="7" class="text-center text-muted py-4">Nenhum lead encontrado.</td></tr> }
+</tbody></table></div>
+<div class="card-footer d-flex justify-content-between align-items-center"><span class="small text-muted">@ViewBag.Total lead(s)</span>
+    <div class="btn-group btn-group-sm">
+        @if (pg > 1) { <a class="btn btn-outline-secondary" asp-action="Index" asp-route-page="@(pg - 1)" asp-route-q="@ViewBag.Q" asp-route-status="@ViewBag.Status" asp-route-sourceId="@ViewBag.SourceId">Anterior</a> }
+        <span class="btn btn-outline-secondary disabled">@pg / @Math.Max(1, pages)</span>
+        @if (pg < pages) { <a class="btn btn-outline-secondary" asp-action="Index" asp-route-page="@(pg + 1)" asp-route-q="@ViewBag.Q" asp-route-status="@ViewBag.Status" asp-route-sourceId="@ViewBag.SourceId">Próxima</a> }
+    </div></div></div>
+

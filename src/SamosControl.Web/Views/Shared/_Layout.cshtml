@@ -1,0 +1,117 @@
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
+@{
+    string Active(string c) => string.Equals((string?)ViewContext.RouteData.Values["controller"], c, StringComparison.OrdinalIgnoreCase) ? "active" : "";
+    string Title = ViewData["Title"] as string ?? "SAMOS CONTROL";
+    var flash = (TempData["flash"] as string)?.Split('|', 2);
+}
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@Title · SAMOS CONTROL</title>
+    <meta name="csrf" content="@Antiforgery.GetAndStoreTokens(Context).RequestToken" />
+    <script src="~/js/theme.js"></script>
+    <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/lib/icons/bootstrap-icons.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+<div class="app">
+    <aside class="sidebar" id="sidebar">
+        <a class="brand" href="/"><i class="bi bi-hexagon-fill"></i> SAMOS <span>CONTROL</span></a>
+        <nav>
+            @if (Perms.Has(Perm.DashboardView)) { <a class="@Active("Home")" href="/"><i class="bi bi-speedometer2"></i> Dashboard</a> }
+            @if (Perms.Has(Perm.CrmView))
+            {
+                <div class="grp">CRM</div>
+                <a class="@Active("Leads")" asp-controller="Leads" asp-action="Index"><i class="bi bi-bullseye"></i> Leads</a>
+                <a class="@Active("Customers")" asp-controller="Customers" asp-action="Index"><i class="bi bi-people"></i> Clientes</a>
+                <a asp-controller="Leads" asp-action="Pipeline"><i class="bi bi-kanban"></i> Pipeline</a>
+            }
+            @if (Perms.Has(Perm.ContractsView))
+            {
+                <div class="grp">Contratos</div>
+                <a class="@Active("Contracts")" asp-controller="Contracts" asp-action="Index"><i class="bi bi-file-earmark-text"></i> Contratos</a>
+                <a class="@Active("Templates")" asp-controller="Templates" asp-action="Index"><i class="bi bi-file-earmark-code"></i> Modelos</a>
+            }
+            @if (Perms.Has(Perm.SellersView))
+            {
+                <div class="grp">Vendedores</div>
+                <a class="@Active("Sellers")" asp-controller="Sellers" asp-action="Index"><i class="bi bi-person-badge"></i> Vendedores</a>
+                <a class="@Active("Commissions")" asp-controller="Commissions" asp-action="Index"><i class="bi bi-cash-stack"></i> Comissões</a>
+            }
+            @if (Perms.Has(Perm.BillingView))
+            {
+                <div class="grp">Financeiro</div>
+                <a class="@Active("Charges")" asp-controller="Charges" asp-action="Index"><i class="bi bi-cash-coin"></i> Cobranças</a>
+            }
+            @if (Perms.Has(Perm.WhatsAppView))
+            {
+                <div class="grp">WhatsApp</div>
+                <a class="@Active("WhatsApp")" asp-controller="WhatsApp" asp-action="Index"><i class="bi bi-whatsapp"></i> Conversas</a>
+            }
+            @if (Perms.Has(Perm.AiUse))
+            {
+                <div class="grp">IA</div>
+                <a asp-controller="Assistant" asp-action="Index"><i class="bi bi-robot"></i> Assistente</a>
+                @if (Perms.Has(Perm.AiHistory)) { <a asp-controller="Assistant" asp-action="History"><i class="bi bi-clock-history"></i> Histórico</a> }
+            }
+            @if (Perms.Has(Perm.AutomationView))
+            {
+                <div class="grp">Automações</div>
+                <a class="@Active("Automation")" asp-controller="Automation" asp-action="Index"><i class="bi bi-gear-wide-connected"></i> Automações</a>
+            }
+            @if (Perms.Has(Perm.MonitoringView))
+            {
+                <div class="grp">Monitoramento</div>
+                <a asp-controller="Monitoring" asp-action="Servers"><i class="bi bi-hdd-network"></i> Servidores</a>
+                <a asp-controller="Monitoring" asp-action="Services"><i class="bi bi-activity"></i> Serviços</a>
+                <a asp-controller="Monitoring" asp-action="Incidents"><i class="bi bi-exclamation-octagon"></i> Incidentes</a>
+            }
+            @if (Perms.Has(Perm.UsersManage) || Perms.Has(Perm.RolesManage) || Perms.Has(Perm.AuditView) || Perms.Has(Perm.SettingsManage))
+            {
+                <div class="grp">Administração</div>
+                @if (Perms.Has(Perm.UsersManage)) { <a class="@Active("Users")" asp-controller="Users" asp-action="Index"><i class="bi bi-person-gear"></i> Usuários</a> }
+                @if (Perms.Has(Perm.RolesManage)) { <a class="@Active("Roles")" asp-controller="Roles" asp-action="Index"><i class="bi bi-shield-lock"></i> Perfis</a> }
+                @if (Perms.Has(Perm.AuditView)) { <a class="@Active("Audit")" asp-controller="Audit" asp-action="Index"><i class="bi bi-journal-check"></i> Auditoria</a> }
+                @if (Perms.Has(Perm.SettingsManage)) { <a class="@Active("Settings")" asp-controller="Settings" asp-action="Index"><i class="bi bi-sliders"></i> Configurações</a> }
+            }
+        </nav>
+    </aside>
+    <div class="main">
+        <header class="topbar">
+            <button class="btn btn-sm btn-outline-secondary d-lg-none" id="menuToggle" type="button"><i class="bi bi-list"></i></button>
+            <h1 class="h5 mb-0">@Title</h1>
+            <div class="ms-auto d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-outline-secondary" id="themeToggle" type="button" title="Alternar tema"><i class="bi bi-moon-stars"></i></button>
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-secondary position-relative" data-bs-toggle="dropdown" id="notifBtn" type="button">
+                        <i class="bi bi-bell"></i><span class="badge bg-danger rounded-pill d-none" id="notifCount">0</span>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end p-0" style="width:340px" id="notifMenu"><div class="p-3 text-muted small">Carregando...</div></div>
+                </div>
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown" type="button"><i class="bi bi-person-circle"></i> @User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value</button>
+                    <div class="dropdown-menu dropdown-menu-end">
+                        <a class="dropdown-item" asp-controller="Account" asp-action="Password">Alterar senha</a>
+                        <a class="dropdown-item" asp-controller="Notifications" asp-action="Index">Notificações</a>
+                        <form asp-controller="Account" asp-action="Logout" method="post"><button class="dropdown-item" type="submit">Sair</button></form>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <main class="content">
+            @if (flash is { Length: 2 }) { <div class="alert alert-@flash[0] alert-dismissible fade show">@flash[1]<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div> }
+            @RenderBody()
+        </main>
+    </div>
+</div>
+<script src="~/lib/bootstrap/js/bootstrap.bundle.min.js"></script>
+<script src="~/lib/chart/chart.umd.js"></script>
+<script src="~/lib/signalr/signalr.min.js"></script>
+<script src="~/js/site.js" asp-append-version="true"></script>
+<script src="~/js/ui.js"></script>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

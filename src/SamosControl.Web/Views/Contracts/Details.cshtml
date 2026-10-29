@@ -1,0 +1,58 @@
+@model Contract
+@{ ViewData["Title"] = Model.Title; var svc = (ContractService)ViewBag.Svc; var charges = (List<Charge>)ViewBag.Charges; }
+<div class="row g-3">
+<div class="col-lg-7"><div class="card"><div class="card-header d-flex justify-content-between align-items-center">
+    <span>Documento <span class="badge @ViewHelpers.Badge(Model.Status.ToString())">@Model.Status</span></span>
+    <div class="d-flex gap-1">
+        <a class="btn btn-sm btn-outline-secondary" asp-action="Pdf" asp-route-id="@Model.Id"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+        @if (Perms.Has(Perm.ContractsCreate) && Model.Status == ContractStatus.Rascunho) { <form method="post" asp-action="Send" asp-route-id="@Model.Id"><button class="btn btn-sm btn-success">Enviar p/ assinatura</button></form> }
+        @if (Perms.Has(Perm.ContractsCreate) && (Model.Status is ContractStatus.Rascunho or ContractStatus.AguardandoAssinatura)) { <form method="post" asp-action="Cancel" asp-route-id="@Model.Id" data-confirm="Cancelar este contrato?"><button class="btn btn-sm btn-outline-danger">Cancelar</button></form> }
+    </div></div>
+    <div class="card-body"><pre class="doc">@Model.RenderedText</pre></div>
+    <div class="card-footer small text-muted">Hash do documento: <code>@Model.DocumentHash</code>@if (Model.FinalPdfHash != null) { <text><br />Hash do PDF final: <code>@Model.FinalPdfHash</code></text> }</div></div></div>
+<div class="col-lg-5">
+    <div class="card mb-3"><div class="card-header">Partes e assinaturas</div><ul class="list-group list-group-flush">
+    @foreach (var p in Model.Parties)
+    {
+        <li class="list-group-item"><div class="d-flex justify-content-between"><strong>@p.Name <small class="text-muted">(@p.Role)</small></strong>
+            <span class="badge @(p.Signature != null ? "bg-success" : "bg-warning text-dark")">@(p.Signature != null ? "Assinou" : "Pendente")</span></div>
+            <div class="small text-muted">@p.Document @p.Email @p.Phone</div>
+            @if (p.Signature != null) { <div class="small">Assinado em @p.Signature.SignedAt.Local() · IP @p.Signature.Ip<br />Hash: <code>@p.Signature.SignatureHash.Truncate(24)…</code></div> }
+            else if (Model.Status == ContractStatus.AguardandoAssinatura)
+            {
+                <div class="input-group input-group-sm mt-1"><input class="form-control" readonly value="@svc.SigningUrl(p.Token)" data-select="1" /></div>
+                @if (Perms.Has(Perm.ContractsCreate)) { <form method="post" asp-action="SendLink" asp-route-id="@Model.Id" class="mt-1"><input type="hidden" name="partyId" value="@p.Id" /><button class="btn btn-sm btn-outline-success"><i class="bi bi-whatsapp"></i> Reenviar link por WhatsApp</button></form> }
+            }
+        </li>
+    }
+    </ul>
+    @if (Perms.Has(Perm.ContractsCreate) && Model.Status == ContractStatus.Rascunho)
+    { <div class="card-footer"><form method="post" asp-action="AddParty" asp-route-id="@Model.Id" class="row g-1">
+        <div class="col-6"><input name="name" class="form-control form-control-sm" placeholder="Nome" required /></div><div class="col-6"><input name="role" class="form-control form-control-sm" placeholder="Papel (ex.: TESTEMUNHA)" /></div>
+        <div class="col-4"><input name="doc" class="form-control form-control-sm" placeholder="CPF/CNPJ" /></div><div class="col-4"><input name="email" class="form-control form-control-sm" placeholder="E-mail" /></div><div class="col-4"><input name="phone" class="form-control form-control-sm" placeholder="Telefone" /></div>
+        <div class="col-12"><button class="btn btn-sm btn-outline-primary w-100">Adicionar parte</button></div></form></div> }
+    </div>
+    <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span>Cobranças do contrato</span>
+        @if (Model.Status == ContractStatus.Assinado && Perms.Has(Perm.BillingCreate))
+        {
+            <div class="d-flex gap-1">
+                <form method="post" asp-action="GenerateCharges" asp-route-id="@Model.Id"><button class="btn btn-sm btn-outline-primary">Gerar / sincronizar</button></form>
+                @if (!Model.BillingClosed) { <form method="post" asp-action="EndBilling" asp-route-id="@Model.Id" data-confirm="Encerrar a recorrência e cancelar cobranças futuras pendentes?"><button class="btn btn-sm btn-outline-danger">Encerrar recorrência</button></form> }
+            </div>
+        }</div>
+    <div class="card-body small">
+        <div class="mb-2">Implantação: <strong>@ContractService.Money(BillingPlan.NetImplementation(Model))</strong> em @Model.ImplementationInstallments× · Mensalidade: <strong>@ContractService.Money(Model.MonthlyValue)</strong> @(Model.MonthlyMonths.HasValue ? $"por {Model.MonthlyMonths} meses" : "(prazo indeterminado)") · @(Model.BillingClosed ? "recorrência encerrada/completa" : "recorrência ativa")</div>
+        @if (Model.Status != ContractStatus.Assinado) { <div class="text-muted">As cobranças são geradas automaticamente quando todas as partes assinam.</div> }
+        else if (charges.Count == 0) { <div class="text-muted">Nenhuma cobrança gerada ainda.</div> }
+        else
+        {
+            <table class="table table-sm mb-0"><tbody>
+            @foreach (var ch in charges) { <tr><td>@ch.Kind @ch.Sequence</td><td>@ch.DueDate.ToString("dd/MM/yyyy")</td><td class="text-end">@ContractService.Money(ch.Amount)</td><td><span class="badge @ViewHelpers.Badge(ch.Status.ToString())">@ch.Status</span></td></tr> }
+            </tbody></table>
+        }
+    </div></div>
+    <div class="card"><div class="card-header">Trilha de eventos</div><ul class="list-group list-group-flush small">
+    @foreach (var e in Model.Events) { <li class="list-group-item d-flex justify-content-between"><span><strong>@e.Type</strong> @e.Ip</span><span class="text-muted">@e.At.Local()</span></li> }
+    </ul></div>
+</div></div>
+

@@ -1,0 +1,7 @@
+@model int
+@{ Layout = "_Bare"; ViewData["Title"] = "Erro " + Model; }
+<div class="card"><div class="card-body p-4 text-center">
+    <h2 class="h5">@(Model == 404 ? "Página não encontrada" : Model == 403 ? "Acesso negado" : "Ocorreu um erro")</h2>
+    <p class="text-muted">@(Model == 404 ? "O endereço solicitado não existe." : "Tente novamente. Se persistir, consulte os logs do sistema.")</p>
+    <a class="btn btn-primary" href="/">Ir para o início</a>
+</div></div>

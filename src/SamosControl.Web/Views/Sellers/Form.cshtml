@@ -1,0 +1,21 @@
+@model SellerForm
+@{ ViewData["Title"] = Model.Id == 0 ? "Novo vendedor" : "Editar vendedor"; var users = (List<User>)ViewBag.Users; }
+<form method="post" asp-action="Save" class="card" style="max-width:800px"><div class="card-body"><div class="row g-3">
+    <input type="hidden" asp-for="Id" />
+    <div class="col-md-6"><label class="form-label">Nome *</label><input asp-for="Name" class="form-control" required maxlength="200" /></div>
+    <div class="col-md-3"><label class="form-label">CPF/CNPJ</label><input asp-for="Document" class="form-control" maxlength="30" /></div>
+    <div class="col-md-3"><label class="form-label">WhatsApp</label><input asp-for="Phone" class="form-control" maxlength="40" placeholder="+55 (65) 9...." /></div>
+    <div class="col-md-6"><label class="form-label">E-mail</label><input asp-for="Email" class="form-control" maxlength="200" /></div>
+    <div class="col-md-6"><label class="form-label">Endereço</label><input asp-for="Address" class="form-control" maxlength="300" /></div>
+    <div class="col-12"><div class="form-text">CPF/CNPJ e WhatsApp são obrigatórios para emitir o contrato de parceria.</div></div>
+    <div class="col-12"><hr class="my-1" /><h6 class="mb-0">Pagamento das comissões (Pix)</h6></div>
+    <div class="col-md-4"><label class="form-label">Tipo da chave</label><select asp-for="PixKeyType" class="form-select"><option value="">—</option><option value="CPF">CPF</option><option value="CNPJ">CNPJ</option><option value="EMAIL">E-mail</option><option value="PHONE">Telefone</option><option value="EVP">Aleatória</option></select></div>
+    <div class="col-md-8"><label class="form-label">Chave Pix</label><input asp-for="PixKey" class="form-control" maxlength="200" /></div>
+    <div class="col-12"><h6 class="mb-0">Comissões</h6></div>
+    <div class="col-md-4"><label class="form-label">% sobre a implantação</label><input asp-for="ImplementationPercent" type="number" step="0.01" min="0" max="100" class="form-control" /></div>
+    <div class="col-md-4"><label class="form-label">% sobre a mensalidade</label><input asp-for="MonthlyPercent" type="number" step="0.01" min="0" max="100" class="form-control" /></div>
+    <div class="col-md-4"><label class="form-label">Meses de comissão recorrente</label><input asp-for="MonthlyCommissionMonths" type="number" min="1" class="form-control" placeholder="vazio = enquanto durar" /></div>
+    <div class="col-md-6"><label class="form-label">Usuário do sistema (opcional)</label><select asp-for="UserId" class="form-select"><option value="">—</option>@foreach (var u in users) { <option value="@u.Id">@u.Name</option> }</select><div class="form-text">Leads atribuídos a este usuário e convertidos em cliente entram na carteira do vendedor.</div></div>
+    <div class="col-md-6 align-self-end"><div class="form-check"><input asp-for="IsActive" class="form-check-input" /><label class="form-check-label" asp-for="IsActive">Ativo</label></div></div>
+    <div class="col-12"><label class="form-label">Observações</label><textarea asp-for="Notes" class="form-control" rows="2" maxlength="2000"></textarea></div>
+</div></div><div class="card-footer"><button class="btn btn-primary">Salvar</button> <a class="btn btn-outline-secondary" asp-action="Index">Cancelar</a></div></form>

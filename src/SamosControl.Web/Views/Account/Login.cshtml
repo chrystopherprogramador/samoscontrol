@@ -1,0 +1,13 @@
+@model LoginVm
+@{ Layout = "_Bare"; ViewData["Title"] = "Entrar"; }
+<div class="card"><div class="card-body p-4">
+    <h2 class="h5 mb-3">Acesso ao painel</h2>
+    @if (ViewBag.Error != null) { <div class="alert alert-danger">@ViewBag.Error</div> }
+    <form method="post" asp-action="Login" autocomplete="on">
+        <input type="hidden" asp-for="ReturnUrl" />
+        <div class="mb-3"><label class="form-label">E-mail</label><input asp-for="Email" type="email" class="form-control" autofocus required /></div>
+        <div class="mb-3"><label class="form-label">Senha</label><input asp-for="Password" type="password" class="form-control" required /></div>
+        <button class="btn btn-primary w-100" type="submit">Entrar</button>
+    </form>
+    <p class="text-muted small mt-3 mb-0">Esqueceu a senha? Solicite um link de redefinição a um administrador.</p>
+</div></div>

@@ -1,0 +1,10 @@
+@model List<AiAction>
+@{ ViewData["Title"] = "Histórico da IA"; }
+<div class="card"><div class="table-responsive"><table class="table table-sm table-hover mb-0">
+<thead><tr><th>Data</th><th>Canal</th><th>Mensagem</th><th>Ferramenta</th><th>Status</th><th>Resultado</th></tr></thead><tbody>
+@foreach (var a in Model)
+{
+    <tr><td class="text-nowrap">@a.CreatedAt.Local()</td><td>@a.Channel</td><td>@a.UserMessage.Truncate(120)</td><td><code>@a.Tool</code></td>
+        <td><span class="badge @ViewHelpers.Badge(a.Status.ToString())">@a.Status</span></td><td class="small">@((a.Result ?? "").Truncate(160))</td></tr>
+}
+</tbody></table></div></div>

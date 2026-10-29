@@ -1,0 +1,10 @@
+@model ServerForm
+@{ ViewData["Title"] = Model.Id == 0 ? "Novo servidor" : "Editar servidor"; }
+<form method="post" class="card" style="max-width:700px"><div class="card-body"><div class="row g-3">
+    <input type="hidden" asp-for="Id" />
+    <div class="col-md-6"><label class="form-label">Nome *</label><input asp-for="Name" class="form-control" required maxlength="100" /></div>
+    <div class="col-md-6"><label class="form-label">Host *</label><input asp-for="Host" class="form-control" required maxlength="200" placeholder="srv01.exemplo.com ou IP" /></div>
+    <div class="col-md-6"><label class="form-label">Tipo</label><input asp-for="Type" class="form-control" maxlength="50" placeholder="VPS, bare-metal..." /></div>
+    <div class="col-md-6"><label class="form-label">Porta</label><input asp-for="Port" type="number" class="form-control" /></div>
+    <div class="col-12"><label class="form-label">Notas</label><textarea asp-for="Notes" class="form-control" rows="2" maxlength="1000"></textarea></div>
+</div></div><div class="card-footer"><button class="btn btn-primary">Salvar</button> <a class="btn btn-outline-secondary" asp-action="Servers">Cancelar</a></div></form>

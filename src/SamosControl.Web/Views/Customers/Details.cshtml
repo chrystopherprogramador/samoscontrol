@@ -1,0 +1,45 @@
+@model Customer
+@{
+    ViewData["Title"] = Model.Name;
+    var contracts = (List<Contract>)ViewBag.Contracts; var charges = (List<Charge>)ViewBag.Charges; var inter = (List<Interaction>)ViewBag.Interactions;
+}
+<div class="row g-3">
+<div class="col-lg-4"><div class="card mb-3"><div class="card-body">
+    <h2 class="h5">@Model.Name <span class="badge @(Model.IsActive ? "bg-success" : "bg-secondary")">@(Model.IsActive ? "Ativo" : "Inativo")</span></h2>
+    <dl class="row small mb-0">
+        <dt class="col-4">Documento</dt><dd class="col-8">@Model.Document</dd>
+        <dt class="col-4">E-mail</dt><dd class="col-8">@Model.Email</dd>
+        <dt class="col-4">Telefone</dt><dd class="col-8">@Model.Phone</dd>
+        <dt class="col-4">WhatsApp</dt><dd class="col-8">@Model.WhatsApp</dd>
+        <dt class="col-4">Endereço</dt><dd class="col-8">@Model.Address @Model.City @Model.State @Model.PostalCode</dd>
+        <dt class="col-4">Asaas</dt><dd class="col-8">@(Model.AsaasCustomerId ?? "não sincronizado")</dd>
+    </dl></div>
+    <div class="card-footer d-flex gap-2 flex-wrap">
+        @if (Perms.Has(Perm.CrmEdit)) { <a class="btn btn-sm btn-outline-primary" asp-action="Edit" asp-route-id="@Model.Id">Editar</a> }
+        @if (Perms.Has(Perm.ContractsCreate)) { <a class="btn btn-sm btn-outline-secondary" asp-controller="Contracts" asp-action="Create" asp-route-customerId="@Model.Id">Novo contrato</a> }
+        @if (Perms.Has(Perm.BillingCreate)) { <a class="btn btn-sm btn-outline-secondary" asp-controller="Charges" asp-action="Create" asp-route-customerId="@Model.Id">Nova cobrança</a> }
+    </div></div>
+    <div class="card"><div class="card-header">Contatos</div><ul class="list-group list-group-flush">
+        @foreach (var c in Model.Contacts) { <li class="list-group-item small"><strong>@c.Name</strong> @c.Role<br />@c.Email @c.Phone</li> }
+        @if (!Model.Contacts.Any()) { <li class="list-group-item text-muted small">Sem contatos.</li> }</ul>
+        @if (Perms.Has(Perm.CrmEdit))
+        { <div class="card-footer"><form method="post" asp-action="AddContact" asp-route-id="@Model.Id" class="row g-1">
+            <div class="col-6"><input name="name" class="form-control form-control-sm" placeholder="Nome" required /></div><div class="col-6"><input name="role" class="form-control form-control-sm" placeholder="Cargo" /></div>
+            <div class="col-6"><input name="email" class="form-control form-control-sm" placeholder="E-mail" /></div><div class="col-6"><input name="phone" class="form-control form-control-sm" placeholder="Telefone" /></div>
+            <div class="col-12"><button class="btn btn-sm btn-outline-primary w-100">Adicionar</button></div></form></div> }
+    </div>
+</div>
+<div class="col-lg-8">
+    <div class="card mb-3"><div class="card-header">Contratos</div><ul class="list-group list-group-flush">
+        @foreach (var c in contracts) { <li class="list-group-item d-flex justify-content-between"><a asp-controller="Contracts" asp-action="Details" asp-route-id="@c.Id">@c.Title</a><span class="badge @ViewHelpers.Badge(c.Status.ToString())">@c.Status</span></li> }
+        @if (contracts.Count == 0) { <li class="list-group-item text-muted small">Sem contratos.</li> }</ul></div>
+    <div class="card mb-3"><div class="card-header">Cobranças</div><ul class="list-group list-group-flush">
+        @foreach (var c in charges) { <li class="list-group-item d-flex justify-content-between"><a asp-controller="Charges" asp-action="Details" asp-route-id="@c.Id">@c.Amount.Money() · @c.DueDate.Local("dd/MM/yyyy")</a><span class="badge @ViewHelpers.Badge(c.Status.ToString())">@c.Status</span></li> }
+        @if (charges.Count == 0) { <li class="list-group-item text-muted small">Sem cobranças.</li> }</ul></div>
+    <div class="card"><div class="card-header">Interações</div><div class="card-body">
+        @if (Perms.Has(Perm.CrmEdit)) { <form method="post" asp-action="Interaction" asp-route-id="@Model.Id" class="row g-2 mb-3">
+            <div class="col-md-3"><select name="type" class="form-select">@foreach (var t in Enum.GetValues<InteractionType>().Where(x => x != InteractionType.Sistema)) { <option value="@t">@t</option> }</select></div>
+            <div class="col-md-7"><input name="text" class="form-control" required maxlength="4000" /></div><div class="col-md-2"><button class="btn btn-primary w-100">Registrar</button></div></form> }
+        <ul class="list-group list-group-flush">@foreach (var i in inter) { <li class="list-group-item px-0"><div class="d-flex justify-content-between"><span class="badge bg-secondary">@i.Type</span><small class="text-muted">@i.CreatedAt.Local()</small></div>@i.Description</li> }
+        @if (inter.Count == 0) { <li class="list-group-item px-0 text-muted">Sem interações.</li> }</ul></div></div>
+</div></div>

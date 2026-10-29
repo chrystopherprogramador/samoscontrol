@@ -1,0 +1,31 @@
+@model SamosControl.Domain.Contract
+@{ Layout = "_Bare"; ViewData["Title"] = "Verificar contrato"; ViewData["Width"] = "640px"; }
+<div class="card"><div class="card-body">
+    <h1 class="h5">Verificação de autenticidade</h1>
+    <form method="post" action="/verify" asp-antiforgery="true" class="input-group mb-3">
+        <input name="code" class="form-control" placeholder="Código (ex.: A1B2-C3D4-E5F6)" maxlength="20" required />
+        <button class="btn btn-primary" type="submit">Verificar</button>
+    </form>
+    @if (ViewBag.NotFound == true)
+    {
+        <div class="alert alert-danger mb-0">Nenhum contrato encontrado para este código.</div>
+    }
+    else if (Model != null)
+    {
+        <div class="alert @(Model.Status == SamosControl.Domain.ContractStatus.Assinado ? "alert-success" : "alert-warning")">
+            Contrato <strong>@Model.Title</strong> — situação: <strong>@Model.Status</strong>
+        </div>
+        <p class="small mb-1">Hash SHA-256 do documento: <code>@Model.DocumentHash</code></p>
+        @if (Model.FinalPdfHash != null) { <p class="small mb-2">Hash SHA-256 do PDF assinado: <code>@Model.FinalPdfHash</code></p> }
+        <ul class="list-group">
+        @foreach (var p in Model.Parties)
+        {
+            <li class="list-group-item small">
+                <strong>@p.Name</strong> (@p.Role) — @SamosControl.Application.DocumentUtil.Mask(p.Signature?.Document ?? p.Document)<br />
+                @if (p.Signature != null) { <span class="text-success">Assinou em @p.Signature.SignedAt.ToString("dd/MM/yyyy HH:mm:ss") UTC</span> } else { <span class="text-warning">Assinatura pendente</span> }
+            </li>
+        }
+        </ul>
+        <p class="small text-muted mt-3 mb-0">Para conferir o PDF, calcule o SHA-256 do arquivo e compare com o hash acima. Dados pessoais são exibidos de forma parcial (LGPD).</p>
+    }
+</div></div>

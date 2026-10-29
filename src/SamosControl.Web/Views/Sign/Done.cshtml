@@ -1,0 +1,9 @@
+@model ContractParty
+@{ Layout = "_Bare"; ViewData["Title"] = "Assinatura concluída"; }
+<div class="card"><div class="card-body p-4 text-center">
+    <i class="bi bi-patch-check text-success display-4"></i>
+    <h2 class="h5 mt-2">Assinatura registrada</h2>
+    <p class="text-muted">Assinado em @Model.Signature!.SignedAt.Local() por @Model.Signature.Name.</p>
+    <p class="small">Hash da assinatura:<br /><code>@Model.Signature.SignatureHash</code></p>
+    <a class="btn btn-primary" href="/sign/@Model.Token/pdf"><i class="bi bi-download"></i> Baixar PDF</a>
+</div></div>

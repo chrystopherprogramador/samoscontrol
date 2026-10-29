@@ -1,0 +1,10 @@
+@model UserForm
+@{ ViewData["Title"] = Model.Id == 0 ? "Novo usuário" : "Editar usuário"; var roles = (List<Role>)ViewBag.Roles; }
+<form method="post" class="card" style="max-width:700px"><div class="card-body"><div class="row g-3">
+    <div class="col-md-6"><label class="form-label">Nome *</label><input asp-for="Name" class="form-control" required maxlength="150" /></div>
+    <div class="col-md-6"><label class="form-label">E-mail *</label><input asp-for="Email" type="email" class="form-control" required readonly="@(Model.Id != 0)" maxlength="200" /></div>
+    <div class="col-md-4"><label class="form-label">Telefone (WhatsApp)</label><input asp-for="Phone" class="form-control" maxlength="40" /><div class="form-text">Necessário para usar o assistente por WhatsApp.</div></div>
+    <div class="col-md-4"><label class="form-label">Perfil *</label><select asp-for="RoleId" class="form-select" required><option value="">Selecione</option>@foreach (var r in roles) { <option value="@r.Id" selected="@(Model.RoleId == r.Id)">@r.Name</option> }</select></div>
+    <div class="col-md-4"><label class="form-label">@(Model.Id == 0 ? "Senha *" : "Nova senha")</label><input asp-for="Password" type="password" class="form-control" autocomplete="new-password" required="@(Model.Id == 0)" /><div class="form-text">Mín. 10 caracteres, letras e números.</div></div>
+    <div class="col-12"><div class="form-check"><input asp-for="IsActive" class="form-check-input" /><label class="form-check-label">Usuário ativo</label></div></div>
+</div></div><div class="card-footer"><button class="btn btn-primary">Salvar</button> <a class="btn btn-outline-secondary" asp-action="Index">Cancelar</a></div></form>

@@ -1,0 +1,52 @@
+services:
+  samos-control:
+    build: .
+    image: samos-control:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8080"
+    environment:
+      DATABASE_CONNECTION_STRING: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-samos};Username=${POSTGRES_USER:-samos};Password=${POSTGRES_PASSWORD:-samos_change_me}"
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@samos.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Samos@12345}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      RUN_WORKERS: ${RUN_WORKERS:-true}
+      TIMEZONE: ${TIMEZONE:-America/Sao_Paulo}
+      STORAGE_PATH: /data
+      GOOGLE_SCRAPER_URL: ${GOOGLE_SCRAPER_URL:-}
+      GOOGLE_SCRAPER_API_KEY: ${GOOGLE_SCRAPER_API_KEY:-}
+      ASAAS_API_URL: ${ASAAS_API_URL:-}
+      ASAAS_API_KEY: ${ASAAS_API_KEY:-}
+      ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN:-}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-}
+      EVOLUTION_WEBHOOK_TOKEN: ${EVOLUTION_WEBHOOK_TOKEN:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      MONITORING_ALERT_NUMBERS: ${MONITORING_ALERT_NUMBERS:-}
+    volumes:
+      - samos_data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-samos}
+      POSTGRES_USER: ${POSTGRES_USER:-samos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-samos_change_me}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  samos_data:
+  pg_data:

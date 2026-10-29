@@ -1,0 +1,17 @@
+@model List<MonitoredService>
+@{ ViewData["Title"] = "Serviços"; var up = (Dictionary<int, double?>)ViewBag.Uptime; }
+@if (Perms.Has(Perm.MonitoringManage)) { <div class="mb-3"><a class="btn btn-primary" asp-action="EditService"><i class="bi bi-plus-lg"></i> Novo serviço</a></div> }
+<div class="card"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Serviço</th><th>Servidor</th><th>Alvo</th><th>Status</th><th>Latência</th><th>Uptime 7d</th><th>SSL expira</th><th>Última checagem</th><th></th></tr></thead><tbody>
+@foreach (var s in Model)
+{
+    <tr><td>@s.Name @if (!s.IsEnabled) { <span class="badge bg-secondary">off</span> }</td><td>@s.Server?.Name</td><td class="small">@s.Kind @(s.Kind == ServiceKind.Tcp ? ":" + s.Port : s.Url)</td>
+        <td><span class="badge @ViewHelpers.Badge(s.Status.ToString())">@s.Status</span></td><td>@(s.LastLatencyMs.HasValue ? s.LastLatencyMs + " ms" : "-")</td>
+        <td>@(up[s.Id].HasValue ? up[s.Id]!.Value.ToString("0.00") + "%" : "-")</td><td class="small">@s.SslExpiresAt.Local("dd/MM/yyyy")</td><td class="small">@s.LastCheckAt.Local("dd/MM HH:mm:ss")</td>
+        <td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" asp-action="History" asp-route-id="@s.Id" title="Histórico"><i class="bi bi-clock-history"></i></a>
+        @if (Perms.Has(Perm.MonitoringManage)) {
+            <form method="post" asp-action="CheckNow" asp-route-id="@s.Id" class="d-inline"><button class="btn btn-sm btn-outline-primary" title="Checar agora"><i class="bi bi-arrow-repeat"></i></button></form>
+            <a class="btn btn-sm btn-outline-primary" asp-action="EditService" asp-route-id="@s.Id"><i class="bi bi-pencil"></i></a>
+            <form method="post" asp-action="DeleteService" asp-route-id="@s.Id" class="d-inline" data-confirm="Remover serviço e histórico?"><button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form> }</td></tr>
+}
+@if (Model.Count == 0) { <tr><td colspan="9" class="text-center text-muted py-4">Nenhum serviço monitorado.</td></tr> }
+</tbody></table></div></div>

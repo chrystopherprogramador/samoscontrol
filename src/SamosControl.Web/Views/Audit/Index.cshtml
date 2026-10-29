@@ -1,0 +1,11 @@
+@model List<AuditLog>
+@{ ViewData["Title"] = "Auditoria"; var mods = (List<string>)ViewBag.Modules; int page = ViewBag.Page; }
+<form method="get" class="d-flex gap-2 mb-3"><select name="module" class="form-select" style="max-width:200px"><option value="">Todos módulos</option>@foreach (var m in mods) { <option value="@m" selected="@(ViewBag.Module == m)">@m</option> }</select>
+    <input name="q" value="@ViewBag.Q" class="form-control" style="max-width:260px" placeholder="Ação, usuário, entidade" /><button class="btn btn-outline-primary"><i class="bi bi-search"></i></button></form>
+<div class="card"><div class="table-responsive"><table class="table table-sm table-hover mb-0"><thead><tr><th>Data</th><th>Usuário</th><th>Módulo</th><th>Ação</th><th>Entidade</th><th>Antes</th><th>Depois</th><th>IP</th></tr></thead><tbody>
+@foreach (var a in Model) { <tr><td class="small text-nowrap">@a.At.Local("dd/MM/yy HH:mm:ss")</td><td>@a.UserName</td><td>@a.Module</td><td><code>@a.Action</code></td><td>@a.Entity @a.EntityId</td><td class="small">@((a.OldData ?? "").Truncate(60))</td><td class="small">@((a.NewData ?? "").Truncate(60))</td><td class="small">@a.Ip</td></tr> }
+</tbody></table></div>
+<div class="card-footer d-flex gap-2">
+    @if (page > 1) { <a class="btn btn-sm btn-outline-secondary" asp-action="Index" asp-route-page="@(page - 1)" asp-route-module="@ViewBag.Module" asp-route-q="@ViewBag.Q">Anterior</a> }
+    @if (Model.Count == 50) { <a class="btn btn-sm btn-outline-secondary" asp-action="Index" asp-route-page="@(page + 1)" asp-route-module="@ViewBag.Module" asp-route-q="@ViewBag.Q">Próxima</a> }
+</div></div>

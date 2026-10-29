@@ -1,0 +1,30 @@
+@model ContractCreateForm
+@{ ViewData["Title"] = "Novo contrato"; var tpls = (List<ContractTemplate>)ViewBag.Templates; var custs = (List<Customer>)ViewBag.Customers; var sellers = (List<Seller>)ViewBag.Sellers; }
+<form method="post" class="card" style="max-width:760px"><div class="card-body"><div class="row g-3">
+    <div class="col-md-6"><label class="form-label">Modelo *</label><select asp-for="TemplateId" class="form-select" required><option value="">Selecione</option>@foreach (var t in tpls) { <option value="@t.Id" data-partner="@(ContractService.IsPartnershipTemplate(t) ? "1" : "0")">@t.Name</option> }</select></div>
+    <div class="col-md-6 client-only"><label class="form-label">Cliente *</label><select asp-for="CustomerId" class="form-select" required><option value="">Selecione</option>@foreach (var c in custs) { <option value="@c.Id" selected="@(Model.CustomerId == c.Id)">@c.Name</option> }</select></div>
+    <div class="col-12" id="sellerBox"><label class="form-label"><span class="client-only">Vendedor (comissão)</span><span class="partner-only d-none">Vendedor (parceiro contratado) *</span></label><select asp-for="SellerId" id="SellerId" class="form-select"><option value="">Nenhum / usar o vendedor do cliente</option>@foreach (var s in sellers) { <option value="@s.Id" data-name="@s.Name" data-doc="@s.Document" data-phone="@s.Phone" data-pix="@s.PixKey" data-impl="@s.ImplementationPercent.ToString("0.##")" data-mens="@s.MonthlyPercent.ToString("0.##")" data-months="@s.MonthlyCommissionMonths">@s.Name — impl. @s.ImplementationPercent.ToString("0.##")% · mens. @s.MonthlyPercent.ToString("0.##")%</option> }</select></div>
+    <div class="col-12 partner-only d-none"><div class="border rounded p-3" id="partnerInfo">
+        <h6 class="mb-2">Contrato de parceria comercial</h6>
+        <p class="small text-muted mb-2">Este contrato é entre a sua empresa e o vendedor. Não tem cliente, valores avulsos, implantação nem mensalidade: ele define a <strong>comissão</strong> do vendedor. Não gera cobranças.</p>
+        <dl class="row small mb-2" id="partnerSummary"><dt class="col-sm-4">Vendedor</dt><dd class="col-sm-8" data-f="name">—</dd><dt class="col-sm-4">CPF/CNPJ</dt><dd class="col-sm-8" data-f="doc">—</dd><dt class="col-sm-4">WhatsApp</dt><dd class="col-sm-8" data-f="phone">—</dd><dt class="col-sm-4">Chave Pix</dt><dd class="col-sm-8" data-f="pix">—</dd><dt class="col-sm-4">Comissão implantação</dt><dd class="col-sm-8" data-f="impl">—</dd><dt class="col-sm-4">Comissão mensalidade</dt><dd class="col-sm-8" data-f="mens">—</dd><dt class="col-sm-4">Prazo da comissão</dt><dd class="col-sm-8" data-f="months">—</dd></dl>
+        <div class="small">Para alterar CPF/CNPJ, Pix ou percentuais, edite o vendedor em <a asp-controller="Sellers" asp-action="Index" target="_blank">Vendedores</a> antes de criar o contrato. O CPF/CNPJ e o WhatsApp são obrigatórios para assinar.</div>
+    </div></div>
+    @if (ViewBag.OwnerConfigured == false) { <div class="col-12"><div class="alert alert-warning mb-0">Dados do representante da empresa não configurados (Configurações → Empresa). Sem eles o contrato não terá a assinatura do dono.</div></div> }
+    <div class="col-12"><label class="form-label">Título</label><input asp-for="Title" class="form-control" maxlength="200" /></div>
+    <div class="col-md-6 client-only"><label class="form-label">Serviço / sistema</label><input asp-for="Service" class="form-control" maxlength="200" /></div>
+    <div class="col-md-3 client-only"><label class="form-label">Valor avulso (R$)</label><input asp-for="Value" type="number" step="0.01" min="0" class="form-control" /><div class="form-text">Deixe 0 se usar implantação/mensalidade.</div></div>
+    <div class="col-md-3 client-only"><label class="form-label">Vencimento avulso</label><input asp-for="Due" type="date" class="form-control" /></div>
+    <div class="col-12 client-only"><hr class="my-1" /><h6 class="mb-0">Implantação</h6></div>
+    <div class="col-md-3 client-only"><label class="form-label">Valor (R$)</label><input asp-for="ImplementationValue" type="number" step="0.01" min="0" class="form-control" /></div>
+    <div class="col-md-3 client-only"><label class="form-label">Desconto (R$)</label><input asp-for="Discount" type="number" step="0.01" min="0" class="form-control" /></div>
+    <div class="col-md-3 client-only"><label class="form-label">Parcelas</label><input asp-for="Installments" type="number" min="1" max="24" class="form-control" /></div>
+    <div class="col-md-3 client-only"><label class="form-label">1º vencimento</label><input asp-for="FirstDue" type="date" class="form-control" /></div>
+    <div class="col-12 client-only"><h6 class="mb-0">Mensalidade (recorrência)</h6></div>
+    <div class="col-md-3 client-only"><label class="form-label">Valor mensal (R$)</label><input asp-for="MonthlyValue" type="number" step="0.01" min="0" class="form-control" /></div>
+    <div class="col-md-3 client-only"><label class="form-label">1º vencimento</label><input asp-for="MonthlyStart" type="date" class="form-control" /></div>
+    <div class="col-md-3 client-only"><label class="form-label">Prazo (meses)</label><input asp-for="MonthlyMonths" type="number" min="1" max="120" class="form-control" placeholder="vazio = indeterminado" /></div>
+    <div class="col-md-3 client-only"><label class="form-label">Forma de cobrança</label><select asp-for="BillingType" class="form-select"><option value="Pix">PIX</option><option value="Boleto">Boleto</option></select></div>
+    <div class="col-12 client-only"><div class="form-text">Após todas as partes assinarem, as parcelas da implantação e as mensalidades são geradas automaticamente no provedor de cobrança ativo (Asaas ou Efí). O link de assinatura é enviado por WhatsApp ao clicar em "Enviar p/ assinatura". Use o marcador <code>{{CONDICOES_FINANCEIRAS}}</code> no modelo.</div></div>
+</div></div><div class="card-footer"><button class="btn btn-primary">Criar</button> <a class="btn btn-outline-secondary" asp-action="Index">Cancelar</a></div></form>
+@section Scripts {<script src="~/js/contract-create.js" asp-append-version="true"></script>}

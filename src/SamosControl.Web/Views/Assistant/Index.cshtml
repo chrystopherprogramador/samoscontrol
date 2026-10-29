@@ -1,0 +1,9 @@
+@model List<AiMessage>
+@{ ViewData["Title"] = "Assistente SAMOS"; }
+<div class="card"><div class="card-body">
+    <div class="chat" id="chatBox">
+        @foreach (var m in Model) { <div class="bubble @(m.Role == "user" ? "out" : "in")">@m.Content</div> }
+        @if (Model.Count == 0) { <div class="bubble in">Olá! Pergunte, por exemplo: "Quantos leads entraram hoje?", "Liste clientes inadimplentes", "Quais serviços estão fora do ar?". Operações sensíveis pedem CONFIRMAR.</div> }
+    </div>
+    <form id="chatForm" class="input-group mt-3"><input id="chatInput" class="form-control" maxlength="2000" placeholder="Digite um comando..." autocomplete="off" /><button class="btn btn-primary" type="submit"><i class="bi bi-send"></i></button></form>
+</div></div>

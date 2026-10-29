@@ -1,0 +1,25 @@
+@model List<Seller>
+@{
+    ViewData["Title"] = "Vendedores";
+    var sums = (Dictionary<(int, CommissionStatus), decimal>)ViewBag.Sums;
+    var clients = (Dictionary<int, int>)ViewBag.Clients;
+    decimal S(int id, CommissionStatus st) => sums.TryGetValue((id, st), out var v) ? v : 0m;
+}
+<div class="d-flex gap-2 mb-3">
+    <div class="flex-grow-1 text-muted small align-self-center">Cada cliente fechado por um vendedor entra na carteira dele; as comissões são geradas quando o cliente paga.</div>
+    <a class="btn btn-outline-secondary" asp-controller="Commissions" asp-action="Index"><i class="bi bi-cash-stack"></i> Comissões</a>
+    @if (Perms.Has(Perm.SellersManage)) { <a class="btn btn-primary" asp-action="Create"><i class="bi bi-plus-lg"></i> Novo vendedor</a> }
+</div>
+<div class="card"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Vendedor</th><th>Implantação</th><th>Mensalidade</th><th>Carteira</th><th>A pagar</th><th>Pago</th><th>Pix</th><th>Status</th></tr></thead><tbody>
+@foreach (var s in Model)
+{
+    <tr><td><a asp-action="Details" asp-route-id="@s.Id" class="text-decoration-none fw-semibold">@s.Name</a></td>
+        <td>@s.ImplementationPercent.ToString("0.##")%</td><td>@s.MonthlyPercent.ToString("0.##")%</td>
+        <td>@(clients.TryGetValue(s.Id, out var n) ? n : 0) cliente(s)</td>
+        <td>@((S(s.Id, CommissionStatus.Pendente) + S(s.Id, CommissionStatus.EmProcessamento) + S(s.Id, CommissionStatus.Erro)).Money())</td>
+        <td>@S(s.Id, CommissionStatus.Paga).Money()</td>
+        <td>@(string.IsNullOrEmpty(s.PixKey) ? "sem chave" : "ok")</td>
+        <td>@(s.IsActive ? "Ativo" : "Inativo")</td></tr>
+}
+@if (Model.Count == 0) { <tr><td colspan="8" class="text-center text-muted py-4">Nenhum vendedor cadastrado.</td></tr> }
+</tbody></table></div></div>

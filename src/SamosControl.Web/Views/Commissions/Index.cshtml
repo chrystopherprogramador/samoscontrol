@@ -1,0 +1,30 @@
+@model List<Commission>
+@{ ViewData["Title"] = "Comissões"; var sellers = (List<Seller>)ViewBag.Sellers; bool auto = ViewBag.Auto; }
+<div class="alert @(auto ? "alert-success" : "alert-info") small">Pagamento: <b>@(auto ? "automático via Efí (Pix)" : "manual")</b>. @(auto ? "Falhas ficam como Erro e podem ser reenviadas." : "Faça o Pix ao vendedor (chave exibida abaixo) e clique em \"Marcar paga\". Para pagar automaticamente, defina PAYOUT_MODE=efi em Configurações → Empresa.")</div>
+<div class="d-flex gap-2 mb-3">
+    <form method="get" class="d-flex gap-2 flex-grow-1">
+        <select name="status" class="form-select" style="max-width:200px" data-autosubmit="1"><option value="">Todos status</option>@foreach (var s in Enum.GetValues<CommissionStatus>()) { <option value="@s" selected="@(ViewBag.Status == s)">@s</option> }</select>
+        <select name="sellerId" class="form-select" style="max-width:240px" data-autosubmit="1"><option value="">Todos vendedores</option>@foreach (var s in sellers) { <option value="@s.Id" selected="@(ViewBag.SellerId == s.Id)">@s.Name</option> }</select>
+    </form>
+    @if (Perms.Has(Perm.CommissionsPay)) { <form method="post" asp-action="Process"><button class="btn btn-primary"><i class="bi bi-arrow-repeat"></i> Processar agora</button></form> }
+</div>
+<div class="card"><div class="table-responsive"><table class="table table-hover mb-0 align-middle"><thead><tr><th>#</th><th>Vendedor</th><th>Cliente</th><th>Tipo</th><th>Base</th><th>%</th><th>Valor</th><th>Pix</th><th>Status</th><th></th></tr></thead><tbody>
+@foreach (var c in Model)
+{
+    <tr><td>@c.Id</td><td>@c.Seller?.Name</td><td>@c.Customer?.Name</td><td>@c.Kind @c.Sequence</td><td>@c.BaseAmount.Money()</td><td>@c.Percent.ToString("0.##")</td><td class="fw-semibold">@c.Amount.Money()</td>
+        <td class="small">@(c.PixKey ?? c.Seller?.PixKey ?? "—")</td>
+        <td><span class="badge @ViewHelpers.Badge(c.Status.ToString())">@c.Status</span>@if (!string.IsNullOrEmpty(c.Error)) { <div class="small text-danger">@c.Error</div> }</td>
+        <td class="text-nowrap">
+        @if (Perms.Has(Perm.CommissionsPay))
+        {
+            @if (c.Status is CommissionStatus.Pendente or CommissionStatus.Erro or CommissionStatus.EmProcessamento)
+            {
+                <form method="post" asp-action="MarkPaid" asp-route-id="@c.Id" class="d-inline"><input name="reference" class="form-control form-control-sm d-inline-block" style="width:110px" placeholder="comprovante" /> <button class="btn btn-sm btn-success">Marcar paga</button></form>
+            }
+            @if (c.Status == CommissionStatus.Erro) { <form method="post" asp-action="Retry" asp-route-id="@c.Id" class="d-inline"><button class="btn btn-sm btn-outline-primary">Reenviar</button></form> }
+            @if (c.Status is CommissionStatus.Pendente or CommissionStatus.Erro) { <form method="post" asp-action="Cancel" asp-route-id="@c.Id" class="d-inline"><button class="btn btn-sm btn-outline-danger">Cancelar</button></form> }
+        }
+        </td></tr>
+}
+@if (Model.Count == 0) { <tr><td colspan="10" class="text-center text-muted py-4">Nenhuma comissão.</td></tr> }
+</tbody></table></div></div>

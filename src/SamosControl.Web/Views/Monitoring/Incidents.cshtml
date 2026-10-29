@@ -1,0 +1,12 @@
+@model List<Incident>
+@{ ViewData["Title"] = "Incidentes"; }
+<div class="card"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Serviço</th><th>Servidor</th><th>Início</th><th>Fim</th><th>Duração</th><th>Descrição</th></tr></thead><tbody>
+@foreach (var i in Model)
+{
+    var end = i.ResolvedAt ?? DateTime.UtcNow; var d = end - i.StartedAt;
+    <tr><td>@i.Service?.Name</td><td>@i.Service?.Server?.Name</td><td class="small">@i.StartedAt.Local()</td>
+        <td class="small">@(i.ResolvedAt.HasValue ? i.ResolvedAt.Local() : "") @if (!i.ResolvedAt.HasValue) { <span class="badge bg-danger">Em andamento</span> }</td>
+        <td>@((int)d.TotalHours)h @d.Minutes min</td><td class="small">@i.Description</td></tr>
+}
+@if (Model.Count == 0) { <tr><td colspan="6" class="text-center text-muted py-4">Nenhum incidente registrado.</td></tr> }
+</tbody></table></div></div>

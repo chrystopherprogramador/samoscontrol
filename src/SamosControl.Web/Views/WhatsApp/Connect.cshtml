@@ -1,0 +1,35 @@
+@model Seller
+@{
+    ViewData["Title"] = "WhatsApp de " + Model.Name;
+    var st = Model.WaStatus;
+}
+<div class="row g-3" id="waconn" data-id="@Model.Id" data-status="@st" data-server="@(((bool)ViewBag.ServerConfigured).ToString().ToLower())">
+<div class="col-lg-5">
+    <div class="card"><div class="card-body">
+        <h5 class="mb-1">@Model.Name</h5>
+        <div class="mb-3"><span id="waStatusBadge" class="badge @(st == "CONECTADO" ? "bg-success" : st == "CONECTANDO" ? "bg-warning text-dark" : "bg-secondary")">@st</span>
+            <span id="waNumber" class="small text-muted ms-2">@(Model.WaNumber != null ? "+" + Model.WaNumber : "")@(Model.WaProfileName != null ? " · " + Model.WaProfileName : "")</span></div>
+        @if (!(bool)ViewBag.ServerConfigured) { <div class="alert alert-warning">Informe a URL e a API key da Evolution em <a asp-controller="Settings" asp-action="Index" asp-route-category="evolution">Configurações</a>.</div> }
+        <div class="d-grid gap-2">
+            <button class="btn btn-success" id="waStart" @(st == "CONECTADO" ? "disabled" : "")><i class="bi bi-qr-code"></i> Conectar WhatsApp (gera QR code)</button>
+            <a class="btn btn-outline-primary" asp-action="Index" asp-route-scope="@Model.Id"><i class="bi bi-chat-dots"></i> Abrir conversas</a>
+        </div>
+        <p class="small text-muted mt-3 mb-2">Ao conectar o sistema cria a instância na Evolution, configura o webhook (<code>@ViewBag.WebhookUrl</code>) e passa a registrar todas as mensagens deste número automaticamente.</p>
+        <div class="d-flex gap-2 flex-wrap">
+            <form method="post" asp-action="Webhook" asp-route-id="@Model.Id"><button class="btn btn-sm btn-outline-secondary" @(Model.WaInstance == null ? "disabled" : "")>Reconfigurar webhook</button></form>
+            <form method="post" asp-action="Disconnect" asp-route-id="@Model.Id"><button class="btn btn-sm btn-outline-warning" @(Model.WaInstance == null ? "disabled" : "")>Desconectar</button></form>
+            <form method="post" asp-action="Disconnect" asp-route-id="@Model.Id" onsubmit="return confirm('Excluir a instância?')"><input type="hidden" name="delete" value="true" /><button class="btn btn-sm btn-outline-danger" @(Model.WaInstance == null ? "disabled" : "")>Excluir instância</button></form>
+        </div>
+        @if (Model.WaInstance != null) { <div class="small text-muted mt-3">Instância: <code>@Model.WaInstance</code></div> }
+    </div></div>
+</div>
+<div class="col-lg-7">
+    <div class="card"><div class="card-body text-center" id="waQrBox">
+        <div id="waQrMsg" class="text-muted py-5">Clique em <b>Conectar</b> para gerar o QR code.<br />No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho.</div>
+        <img id="waQr" class="d-none img-fluid" style="max-width:320px" alt="QR code" />
+        <div id="waPair" class="mt-2 d-none">Código de pareamento: <code id="waPairCode"></code></div>
+        <div id="waErr" class="alert alert-danger d-none mt-3 text-start"></div>
+    </div></div>
+</div>
+</div>
+@section Scripts { <script src="~/js/whatsapp-connect.js" asp-append-version="true"></script> }

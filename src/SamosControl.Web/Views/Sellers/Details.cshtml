@@ -1,0 +1,44 @@
+@model Seller
+@{
+    ViewData["Title"] = Model.Name;
+    var customers = (List<Customer>)ViewBag.Customers;
+    var comms = (List<Commission>)ViewBag.Commissions;
+    var tpls = (List<ContractTemplate>)ViewBag.Templates;
+}
+<div class="row g-3">
+<div class="col-lg-5"><div class="card"><div class="card-body">
+    <h6>Dados</h6>
+    <div class="small">CPF/CNPJ: @(Model.Document ?? "-")<br />WhatsApp: @(Model.Phone ?? "-")<br />E-mail: @(Model.Email ?? "-")<br />Pix: @(Model.PixKey ?? "—") @(Model.PixKeyType)</div>
+    <hr />
+    <div>Implantação: <b>@Model.ImplementationPercent.ToString("0.##")%</b> · Mensalidade: <b>@Model.MonthlyPercent.ToString("0.##")%</b>@(Model.MonthlyCommissionMonths.HasValue ? $" por {Model.MonthlyCommissionMonths} meses" : "")</div>
+    @if (Perms.Has(Perm.SellersManage)) { <a class="btn btn-sm btn-outline-secondary mt-3" asp-action="Edit" asp-route-id="@Model.Id">Editar</a> }
+    <hr />
+    <div class="small">WhatsApp próprio: <span class="badge @(Model.WaStatus == "CONECTADO" ? "bg-success" : Model.WaStatus == "CONECTANDO" ? "bg-warning text-dark" : "bg-secondary")">@Model.WaStatus</span>@(Model.WaNumber != null ? " +" + Model.WaNumber : "")</div>
+    <div class="mt-2 d-flex gap-2">
+        @if (Perms.Has(Perm.WhatsAppManage)) { <a class="btn btn-sm btn-outline-success" asp-controller="WhatsApp" asp-action="Connect" asp-route-id="@Model.Id">Conectar / gerenciar</a> }
+        @if (Perms.Has(Perm.WhatsAppView)) { <a class="btn btn-sm btn-outline-primary" asp-controller="WhatsApp" asp-action="Index" asp-route-scope="@Model.Id">Ver conversas</a> }
+    </div>
+</div></div>
+@if (Perms.Has(Perm.ContractsCreate))
+{
+    <div class="card mt-3"><div class="card-body">
+        <h6>Contrato de parceria</h6>
+        @if (Model.PartnerContractId.HasValue) { <p class="small">Último contrato: <a asp-controller="Contracts" asp-action="Details" asp-route-id="@Model.PartnerContractId">#@Model.PartnerContractId</a></p> }
+        <form method="post" asp-action="PartnerContract" asp-route-id="@Model.Id" class="d-grid gap-2">
+            <select name="templateId" class="form-select" required><option value="">Modelo</option>@foreach (var t in tpls) { <option value="@t.Id">@t.Name</option> }</select>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="send" value="true" id="snd" checked /><label class="form-check-label" for="snd">Enviar link por WhatsApp ao vendedor e ao dono</label></div>
+            <button class="btn btn-primary">Gerar contrato</button>
+        </form>
+    </div></div>
+}
+</div>
+<div class="col-lg-7">
+    <div class="card"><div class="card-header">Carteira (@customers.Count)</div><div class="table-responsive"><table class="table mb-0"><tbody>
+    @foreach (var c in customers) { <tr><td><a asp-controller="Customers" asp-action="Details" asp-route-id="@c.Id">@c.Name</a></td></tr> }
+    @if (customers.Count == 0) { <tr><td class="text-muted">Nenhum cliente ainda.</td></tr> }
+    </tbody></table></div></div>
+    <div class="card mt-3"><div class="card-header">Comissões</div><div class="table-responsive"><table class="table mb-0"><thead><tr><th>#</th><th>Cliente</th><th>Tipo</th><th>Base</th><th>%</th><th>Valor</th><th>Status</th></tr></thead><tbody>
+    @foreach (var c in comms) { <tr><td>@c.Id</td><td>@c.Customer?.Name</td><td>@c.Kind @c.Sequence</td><td>@c.BaseAmount.Money()</td><td>@c.Percent.ToString("0.##")</td><td>@c.Amount.Money()</td><td><span class="badge @ViewHelpers.Badge(c.Status.ToString())">@c.Status</span></td></tr> }
+    @if (comms.Count == 0) { <tr><td colspan="7" class="text-muted">Sem comissões.</td></tr> }
+    </tbody></table></div></div>
+</div></div>

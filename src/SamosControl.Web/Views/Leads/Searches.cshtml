@@ -1,0 +1,27 @@
+@model List<ScraperSearch>
+@{ ViewData["Title"] = "Google Maps Scraper"; var runs = (List<LeadSyncRun>)ViewBag.Runs; }
+@if (!(bool)ViewBag.Configured) { <div class="alert alert-warning">Integração <strong>não configurada</strong>. Defina GOOGLE_SCRAPER_URL e GOOGLE_SCRAPER_API_KEY em <a asp-controller="Settings" asp-action="Index" asp-route-category="scraper">Configurações</a>.</div> }
+<div class="row g-3">
+<div class="col-lg-5">
+    @if (Perms.Has(Perm.CrmEdit))
+    {
+    <div class="card mb-3"><div class="card-header">Nova pesquisa</div><div class="card-body">
+        <form method="post" asp-action="NewSearch">
+            <div class="mb-2"><label class="form-label">Termo</label><input name="query" class="form-control" placeholder="lojas de roupa" required maxlength="200" /></div>
+            <div class="mb-2"><label class="form-label">Localização</label><input name="location" class="form-control" placeholder="Goiânia, GO" maxlength="200" /></div>
+            <div class="mb-3"><label class="form-label">Segmento (opcional)</label><input name="segment" class="form-control" maxlength="100" /></div>
+            <button class="btn btn-primary">Criar pesquisa</button>
+        </form></div></div>
+    <form method="post" asp-action="SyncNow"><button class="btn btn-outline-primary w-100"><i class="bi bi-arrow-repeat"></i> Sincronizar resultados agora</button></form>
+    }
+</div>
+<div class="col-lg-7">
+    <div class="card mb-3"><div class="card-header">Pesquisas</div><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Termo</th><th>Local</th><th>Status</th><th>Importados</th><th>Última sync</th></tr></thead><tbody>
+    @foreach (var s in Model) { <tr><td>@s.Query</td><td>@s.Location</td><td><span class="badge @ViewHelpers.Badge(s.Status)">@s.Status</span>@if (s.LastError != null) { <div class="small text-danger">@s.LastError.Truncate(120)</div> }</td><td>@s.ImportedCount</td><td class="small">@s.LastSyncAt.Local()</td></tr> }
+    @if (Model.Count == 0) { <tr><td colspan="5" class="text-muted text-center">Nenhuma pesquisa.</td></tr> }
+    </tbody></table></div></div>
+    <div class="card"><div class="card-header">Sincronizações</div><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Início</th><th>Status</th><th>Encontrados</th><th>Criados</th><th>Atualizados</th><th>Erros</th></tr></thead><tbody>
+    @foreach (var r in runs) { <tr><td class="small">@r.StartedAt.Local()</td><td><span class="badge @ViewHelpers.Badge(r.Status == "OK" ? "Success" : r.Status == "RUNNING" ? "Pendente" : "Error")">@r.Status</span></td><td>@r.Found</td><td>@r.Created</td><td>@r.Updated</td><td>@r.Errors</td></tr> }
+    @if (runs.Count == 0) { <tr><td colspan="6" class="text-muted text-center">Sem sincronizações.</td></tr> }
+    </tbody></table></div></div>
+</div></div>

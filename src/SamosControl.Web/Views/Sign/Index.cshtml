@@ -1,0 +1,51 @@
+@model ContractParty
+@{
+    Layout = "_Bare"; ViewData["Title"] = "Assinatura de contrato"; ViewData["Width"] = "860px";
+    var c = Model.Contract!;
+    var open = c.Status == ContractStatus.AguardandoAssinatura && Model.Signature == null;
+}
+@if (c.Status is ContractStatus.Rascunho or ContractStatus.Cancelado)
+{
+    <div class="alert alert-warning">Este contrato não está disponível para assinatura.</div>
+}
+else
+{
+<div class="card mb-3"><div class="card-header"><strong>@c.Title</strong></div><div class="card-body"><pre class="doc">@c.RenderedText</pre></div>
+    <div class="card-footer small text-muted">Hash SHA-256 do documento: <code>@c.DocumentHash</code></div></div>
+@if (Model.Signature != null)
+{
+    <div class="alert alert-success">Você já assinou este contrato em @Model.Signature.SignedAt.Local(). <a href="/sign/@Model.Token/pdf">Baixar PDF</a></div>
+}
+else if (open)
+{
+var needOtp = ((ContractService)ViewBag.Svc).RequiresOtp(Model);
+<div class="card"><div class="card-body">
+    <h2 class="h6">Assinar como @Model.Name</h2>
+    @if (needOtp)
+    {
+        <div class="border rounded p-2 mb-3 bg-body-tertiary">
+            <p class="small mb-2"><strong>1. Confirme seu WhatsApp.</strong> Enviaremos um código de 6 dígitos para o número terminado em <code>@(DocumentUtil.Digits(Model.Phone) is { Length: > 4 } d ? d[^4..] : "****")</code>.</p>
+            <form method="post" action="/sign/@Model.Token/code" asp-antiforgery="true"><button class="btn btn-sm btn-outline-success" type="submit"><i class="bi bi-whatsapp"></i> Enviar código</button></form>
+        </div>
+    }
+    <form method="post" action="/sign/@Model.Token" asp-antiforgery="true">
+        <div class="row g-2">
+            <div class="col-md-6"><label class="form-label">Nome completo</label><input name="Name" class="form-control" value="@Model.Name" required minlength="3" maxlength="200" autocomplete="name" /></div>
+            <div class="col-md-6"><label class="form-label">CPF/CNPJ *</label><input name="Document" class="form-control" value="@Model.Document" required maxlength="30" inputmode="numeric" /></div>
+            <div class="col-md-6"><label class="form-label">E-mail</label><input name="Email" type="email" class="form-control" value="@Model.Email" maxlength="200" autocomplete="email" /></div>
+            @if (needOtp)
+            {
+                <div class="col-md-6"><label class="form-label">Código recebido no WhatsApp *</label><input name="Otp" class="form-control" required maxlength="6" minlength="6" inputmode="numeric" autocomplete="one-time-code" /></div>
+            }
+            else
+            {
+                <div class="col-md-6"><label class="form-label">Telefone</label><input name="Phone" class="form-control" value="@Model.Phone" maxlength="40" /></div>
+            }
+        </div>
+        <div class="form-check my-3"><input class="form-check-input" type="checkbox" name="Accept" value="true" id="acc" required /><label class="form-check-label small" for="acc">@ContractService.TermsText</label></div>
+        <button class="btn btn-success" type="submit"><i class="bi bi-pen"></i> Assinar eletronicamente</button>
+        <p class="small text-muted mt-2 mb-0">Código de verificação do contrato: <code>@c.VerificationCode</code>. Após assinar, você poderá baixar o PDF com o certificado de assinatura e conferir a autenticidade em <a href="/verify/@c.VerificationCode">/verify</a>.</p>
+    </form>
+</div></div>
+}
+}

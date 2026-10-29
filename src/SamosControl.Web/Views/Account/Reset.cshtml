@@ -1,0 +1,12 @@
+@model ResetVm
+@{ Layout = "_Bare"; ViewData["Title"] = "Redefinir senha"; }
+<div class="card"><div class="card-body p-4">
+    <h2 class="h5 mb-3">Redefinir senha</h2>
+    @if (ViewBag.Error != null) { <div class="alert alert-danger">@ViewBag.Error</div> }
+    <form method="post" asp-action="Reset">
+        <input type="hidden" asp-for="Token" />
+        <div class="mb-3"><label class="form-label">Nova senha</label><input asp-for="Password" type="password" class="form-control" required /><div class="form-text">Mínimo 10 caracteres, com letras e números.</div></div>
+        <div class="mb-3"><label class="form-label">Confirmar</label><input asp-for="Confirm" type="password" class="form-control" required /></div>
+        <button class="btn btn-primary w-100" type="submit">Salvar</button>
+    </form>
+</div></div>

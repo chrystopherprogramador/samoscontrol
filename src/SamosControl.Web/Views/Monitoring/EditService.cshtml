@@ -1,0 +1,16 @@
+@model ServiceForm
+@{ ViewData["Title"] = Model.Id == 0 ? "Novo serviço" : "Editar serviço"; var servers = (List<Server>)ViewBag.Servers; }
+<form method="post" class="card" style="max-width:760px"><div class="card-body"><div class="row g-3">
+    <input type="hidden" asp-for="Id" />
+    <div class="col-md-6"><label class="form-label">Servidor *</label><select asp-for="ServerId" class="form-select" required><option value="">Selecione</option>@foreach (var s in servers) { <option value="@s.Id" selected="@(Model.ServerId == s.Id)">@s.Name</option> }</select></div>
+    <div class="col-md-6"><label class="form-label">Nome *</label><input asp-for="Name" class="form-control" required maxlength="100" /></div>
+    <div class="col-md-4"><label class="form-label">Tipo</label><select asp-for="Kind" class="form-select">@foreach (var k in Enum.GetValues<ServiceKind>()) { <option value="@k">@k.ToString().ToUpperInvariant()</option> }</select></div>
+    <div class="col-md-5"><label class="form-label">URL (HTTP/HTTPS)</label><input asp-for="Url" class="form-control" maxlength="500" placeholder="https://portal.exemplo.com/health" /><div class="form-text">Se vazio, usa o host do servidor.</div></div>
+    <div class="col-md-3"><label class="form-label">Porta (TCP)</label><input asp-for="Port" type="number" class="form-control" /></div>
+    <div class="col-md-3"><label class="form-label">Status esperado</label><input asp-for="ExpectedStatus" type="number" class="form-control" /></div>
+    <div class="col-md-3"><label class="form-label">Timeout (ms)</label><input asp-for="TimeoutMs" type="number" class="form-control" /></div>
+    <div class="col-md-3"><label class="form-label">Degradado acima de (ms)</label><input asp-for="DegradedLatencyMs" type="number" class="form-control" /></div>
+    <div class="col-md-3"><label class="form-label">Intervalo (s)</label><input asp-for="IntervalSeconds" type="number" class="form-control" /></div>
+    <div class="col-md-3"><label class="form-label">Falhas p/ OFFLINE</label><input asp-for="FailureThreshold" type="number" class="form-control" /></div>
+    <div class="col-12"><div class="form-check"><input asp-for="IsEnabled" class="form-check-input" /><label class="form-check-label">Monitoramento ativo</label></div></div>
+</div></div><div class="card-footer"><button class="btn btn-primary">Salvar</button> <a class="btn btn-outline-secondary" asp-action="Services">Cancelar</a></div></form>

@@ -1,0 +1,45 @@
+@model DashboardData
+@using System.Text.Json
+@{
+    ViewData["Title"] = "Dashboard";
+    string J(object o) => JsonSerializer.Serialize(o);
+    void Kpi(string label, string value, string icon, string? href = null)
+    {
+        <div class="col-6 col-md-4 col-xl-3"><div class="card h-100"><div class="card-body d-flex justify-content-between align-items-center">
+            <div><div class="kpi-label">@label</div><div class="kpi">@value</div></div><i class="bi @icon fs-2 text-primary opacity-50"></i></div></div></div>
+    }
+}
+<div class="row g-3 mb-3">
+    @{ Kpi("Leads hoje", Model.LeadsToday.ToString(), "bi-bullseye");
+       Kpi("Leads no mês", Model.LeadsMonth.ToString(), "bi-calendar-month");
+       Kpi("Clientes ativos", Model.ActiveCustomers.ToString(), "bi-people");
+       Kpi("Contratos aguardando", Model.ContractsPending.ToString(), "bi-hourglass-split");
+       Kpi("Contratos assinados", Model.ContractsSigned.ToString(), "bi-file-earmark-check");
+       Kpi("Cobranças abertas", $"{Model.ChargesOpen} · {Model.AmountOpen.Money()}", "bi-cash");
+       Kpi("Cobranças vencidas", $"{Model.ChargesOverdue} · {Model.AmountOverdue.Money()}", "bi-exclamation-triangle");
+       Kpi("Recebido no mês", Model.ReceivedMonth.Money(), "bi-cash-coin");
+       Kpi("Serviços online", $"{Model.ServicesOnline}/{Model.ServicesTotal}", "bi-check-circle");
+       Kpi("Offline / degradados", $"{Model.ServicesOffline} / {Model.ServicesDegraded}", "bi-x-circle");
+       Kpi("Mensagens WhatsApp hoje", Model.MessagesToday.ToString(), "bi-whatsapp");
+       Kpi("Automações hoje", Model.AutomationsToday.ToString(), "bi-gear-wide-connected"); }
+</div>
+<div class="row g-3 mb-3">
+    <div class="col-lg-8"><div class="card h-100"><div class="card-header">Leads por dia (14 dias)</div><div class="card-body">
+        <canvas data-chart="line" data-label="Leads" data-labels="@J(Model.LeadsPerDay.Keys)" data-values="@J(Model.LeadsPerDay.Values)"></canvas></div></div></div>
+    <div class="col-lg-4"><div class="card h-100"><div class="card-header">Leads por status</div><div class="card-body">
+        <canvas data-chart="doughnut" data-labels="@J(Model.LeadsByStatus.Keys)" data-values="@J(Model.LeadsByStatus.Values)"></canvas></div></div></div>
+</div>
+<div class="row g-3">
+    <div class="col-lg-4"><div class="card h-100"><div class="card-header">Cobranças por status</div><div class="card-body">
+        <canvas data-chart="bar" data-label="Cobranças" data-labels="@J(Model.ChargesByStatus.Keys)" data-values="@J(Model.ChargesByStatus.Values)"></canvas></div></div></div>
+    <div class="col-lg-4"><div class="card h-100"><div class="card-header">Uptime (7 dias)</div>
+        <ul class="list-group list-group-flush">
+            @foreach (var u in Model.Uptime) { <li class="list-group-item d-flex justify-content-between"><span>@u.Name</span><strong>@(u.Uptime.HasValue ? u.Uptime.Value.ToString("0.00") + "%" : "-")</strong></li> }
+            @if (Model.Uptime.Count == 0) { <li class="list-group-item text-muted">Nenhum serviço monitorado.</li> }
+        </ul></div></div>
+    <div class="col-lg-4"><div class="card h-100"><div class="card-header">Falhas recentes (@Model.FailuresRecent)</div>
+        <ul class="list-group list-group-flush">
+            @foreach (var f in Model.RecentFailures) { <li class="list-group-item small">@f</li> }
+            @if (Model.RecentFailures.Count == 0) { <li class="list-group-item text-muted">Nenhuma falha recente.</li> }
+        </ul></div></div>
+</div>

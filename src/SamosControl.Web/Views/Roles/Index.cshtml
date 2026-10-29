@@ -1,0 +1,10 @@
+@model List<Role>
+@{ ViewData["Title"] = "Perfis"; var counts = (Dictionary<int, int>)ViewBag.UserCounts; }
+<div class="mb-3"><a class="btn btn-primary" asp-action="Create"><i class="bi bi-plus-lg"></i> Novo perfil</a></div>
+<div class="card"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Perfil</th><th>Permissões</th><th>Usuários</th><th></th></tr></thead><tbody>
+@foreach (var r in Model)
+{ <tr><td><strong>@r.Name</strong>@if (r.IsSystem) { <span class="badge bg-secondary ms-1">sistema</span> }<div class="small text-muted">@r.Description</div></td>
+  <td class="small">@r.Permissions.Count de @Perm.All.Length</td><td>@(counts.TryGetValue(r.Id, out var n) ? n : 0)</td>
+  <td class="text-nowrap"><a class="btn btn-sm btn-outline-primary" asp-action="Edit" asp-route-id="@r.Id">Editar</a>
+  @if (!r.IsSystem) { <form method="post" asp-action="Delete" asp-route-id="@r.Id" class="d-inline" data-confirm="Excluir perfil?"><button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form> }</td></tr> }
+</tbody></table></div></div>

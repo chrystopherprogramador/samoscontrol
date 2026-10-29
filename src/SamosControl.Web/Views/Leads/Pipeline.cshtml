@@ -1,0 +1,25 @@
+@model List<Lead>
+@{ ViewData["Title"] = "Pipeline"; }
+<div class="pipeline">
+@foreach (var st in Enum.GetValues<LeadStatus>())
+{
+    var items = Model.Where(l => l.Status == st).ToList();
+    <div class="col-st"><div class="card h-100"><div class="card-header d-flex justify-content-between"><strong>@st</strong><span class="badge @ViewHelpers.Badge(st.ToString())">@items.Count</span></div>
+    <div class="card-body p-2" style="max-height:70vh;overflow-y:auto">
+    @foreach (var l in items.Take(40))
+    {
+        <div class="card mb-2"><div class="card-body p-2 small">
+            <a asp-action="Details" asp-route-id="@l.Id" class="fw-semibold text-decoration-none">@l.Name</a>
+            <div class="text-muted">@l.City @l.Phone</div>
+            @if (Perms.Has(Perm.CrmEdit))
+            {
+            <form method="post" asp-action="Status" asp-route-id="@l.Id" class="mt-1 d-flex gap-1"><input type="hidden" name="back" value="pipeline" />
+                <select name="status" class="form-select form-select-sm">@foreach (var s in Enum.GetValues<LeadStatus>()) { <option value="@s" selected="@(s == st)">@s</option> }</select>
+                <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-right"></i></button></form>
+            }
+        </div></div>
+    }
+    @if (items.Count > 40) { <div class="small text-muted text-center">+ @(items.Count - 40) ...</div> }
+    </div></div></div>
+}
+</div>
