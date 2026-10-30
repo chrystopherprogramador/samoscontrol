@@ -1,0 +1,5 @@
+.q-card { border-left: 3px solid var(--brand); }
+.q-card.q-gap { border-left-color: #ef4444; }
+.q-card:target { box-shadow: 0 0 0 2px var(--brand); }
+.test-reply { padding: .6rem .8rem; border-radius: .6rem; background: var(--bs-tertiary-bg); white-space: pre-wrap; }
+.map-ai { border: 1px solid rgba(99,102,241,.45); background: linear-gradient(160deg, rgba(99,102,241,.1), transparent 60%); }

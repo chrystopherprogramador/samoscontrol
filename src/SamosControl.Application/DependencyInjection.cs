@@ -71,11 +71,17 @@ public static class DependencyInjection
         s.AddScoped<DashboardService>();
         s.AddScoped<AutomationService>();
         s.AddScoped<SamosAgent>();
+        s.AddScoped<PersonalService>();
+        s.AddScoped<MapService>();
+        s.AddScoped<KnowledgeService>();
+        s.AddScoped<SdrService>();
         foreach (var t in new[]
         {
             typeof(QueryLeadsTool), typeof(QueryCustomersTool), typeof(QueryChargesTool), typeof(QueryContractsTool), typeof(QueryServersTool),
             typeof(QueryServicesTool), typeof(CompanySummaryTool), typeof(CreateJobTool), typeof(SyncLeadsTool), typeof(CreateLeadSearchTool),
-            typeof(CreateChargeTool), typeof(SendWhatsAppTool)
+            typeof(CreateChargeTool), typeof(SendWhatsAppTool),
+            typeof(AddTaskTool), typeof(ListTasksTool), typeof(CompleteTaskTool), typeof(RescheduleTaskTool), typeof(DeleteTaskTool),
+            typeof(AddNoteTool), typeof(SearchNotesTool), typeof(DeleteNoteTool), typeof(AddExpenseTool), typeof(ExpenseSummaryTool)
         }) s.AddScoped(typeof(IAgentTool), t);
 
         if (runWorkers)

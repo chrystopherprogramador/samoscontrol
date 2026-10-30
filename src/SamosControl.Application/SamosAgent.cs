@@ -73,40 +73,95 @@ public class SamosAgent
         var allowed = new List<IAgentTool>();
         foreach (var t in _tools) if (ctx.UserId.HasValue && await _perms.HasAsync(ctx.UserId.Value, t.Permission)) allowed.Add(t);
 
-        var intent = await InterpretAsync(message, allowed, ct);
-        if (intent.Tool == null) return intent.Reply ?? HelpText(allowed);
+        // Sem LLM: um único passo por regras. Com LLM: conversa com memória e até 4 passos (ferramenta -> resultado -> resposta).
+        var useLlm = _ai.IsConfigured;
+        var chat = new List<AiChatMessage>();
+        if (useLlm)
+        {
+            chat.Add(new AiChatMessage("system", BuildPrompt(allowed, ctx)));
+            chat.AddRange(await LoadHistoryAsync(ctx, ct));
+            chat.Add(new AiChatMessage("user", message));
+        }
+        var results = new List<string>();
+        string? lastCall = null;
+        for (var step = 0; step < 4; step++)
+        {
+            Intent? intent = null;
+            string? raw = null;
+            if (useLlm)
+            {
+                try { raw = await _ai.ChatAsync(chat, true, ct); intent = ParseLlm(raw); }
+                catch (Exception ex) when (ex is IntegrationException or JsonException) { _log.LogWarning("LLM indisponível: {Msg}", ex.Message); }
+                if (intent == null && step > 0) break;
+                if (intent == null) { useLlm = false; }
+            }
+            if (!useLlm && step == 0) intent = RuleBasedInterpreter.Interpret(message);
+            if (intent == null) break;
+            if (intent.Tool == null)
+                return intent.Reply ?? (results.Count > 0 ? string.Join("\n\n", results) : HelpText(allowed));
 
+            var call = intent.Tool + intent.Args.ToJsonString();
+            if (call == lastCall) break; // o modelo repetiu a mesma chamada: encerra com o que já temos
+            lastCall = call;
+
+            var (text, final) = await StepAsync(intent, message, allowed, ctx, now, ct);
+            if (final) return results.Count > 0 ? string.Join("\n\n", results) + "\n\n" + text : text;
+            results.Add(text);
+            if (!useLlm) return text;
+            chat.Add(new AiChatMessage("assistant", raw!));
+            chat.Add(new AiChatMessage("user", $"RESULTADO da ferramenta {intent.Tool}:\n{text}\n\nAgora responda ao usuário em {{\"reply\":\"...\"}}, em português, de forma natural e curta, mantendo TODOS os números, ids (#) e itens do resultado (não resuma listas). Se faltar executar outra ferramenta para concluir o pedido, chame-a."));
+        }
+        return results.Count > 0 ? string.Join("\n\n", results) : HelpText(allowed);
+    }
+
+    /// <summary>Valida, planeja e executa uma ferramenta. final = true quando a resposta deve ir direto ao usuário (erro, negado ou pedido de confirmação).</summary>
+    private async Task<(string Text, bool Final)> StepAsync(Intent intent, string message, List<IAgentTool> allowed, AgentContext ctx, DateTime now, CancellationToken ct)
+    {
         var tool = _tools.FirstOrDefault(t => t.Name == intent.Tool);
-        var action = new AiAction { UserId = ctx.UserId, Channel = ctx.Channel, Phone = ctx.Phone, UserMessage = message, Tool = intent.Tool, ArgsJson = intent.Args.ToJsonString() };
+        var action = new AiAction { UserId = ctx.UserId, Channel = ctx.Channel, Phone = ctx.Phone, UserMessage = message, Tool = intent.Tool!, ArgsJson = intent.Args.ToJsonString() };
         if (tool == null) // the LLM asked for something that is not a registered tool
         {
             action.Status = AiActionStatus.Negada; action.Result = "Ferramenta inexistente.";
             await SaveActionAsync(action, ctx);
-            return "Não sei executar isso. " + HelpText(allowed);
+            return ("Não sei executar isso. " + HelpText(allowed), true);
         }
         if (!allowed.Contains(tool))
         {
             action.Status = AiActionStatus.Negada; action.Result = "Sem permissão.";
             await SaveActionAsync(action, ctx);
-            return "Você não tem permissão para essa operação.";
+            return ("Você não tem permissão para essa operação.", true);
         }
-        var plan = await tool.PlanAsync(ctx, intent.Args);
+        ToolPlan plan;
+        try { plan = await tool.PlanAsync(ctx, intent.Args); }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException) { plan = new ToolPlan("⚠️ " + ex.Message, intent.Args, ""); }
         if (plan.Error != null)
         {
             action.Status = AiActionStatus.Falhou; action.Result = plan.Error;
             await SaveActionAsync(action, ctx);
-            return plan.Error;
+            return (plan.Error, true);
         }
         action.ArgsJson = plan.Args.ToJsonString();
         if (tool.RequiresConfirmation)
         {
             action.Status = AiActionStatus.AguardandoConfirmacao; action.RequiresConfirmation = true; action.ExpiresAt = now.Add(ConfirmationTtl);
             await SaveActionAsync(action, ctx);
-            return plan.Description + "\n\nResponda CONFIRMAR para executar ou CANCELAR.";
+            return (plan.Description + "\n\nResponda CONFIRMAR para executar ou CANCELAR.", true);
         }
-        return await RunAsync(tool, action, plan.Args, ctx, ct);
+        var text = await RunAsync(tool, action, plan.Args, ctx, ct);
+        return (text, action.Status == AiActionStatus.Falhou);
     }
 
+    private async Task<List<AiChatMessage>> LoadHistoryAsync(AgentContext ctx, CancellationToken ct)
+    {
+        var since = DateTime.UtcNow.AddHours(-12);
+        var rows = await _db.AiMessages.Where(m => m.UserId == ctx.UserId && m.Channel == ctx.Channel && m.CreatedAt >= since)
+            .OrderByDescending(m => m.Id).Take(10).ToListAsync(ct);
+        rows.Reverse();
+        // O histórico guarda a resposta final em texto; o modelo vê como {"reply": ...} para manter o formato.
+        return rows.Select(m => m.Role == "assistant"
+            ? new AiChatMessage("assistant", new JsonObject { ["reply"] = m.Content.Truncate(700) }.ToJsonString())
+            : new AiChatMessage("user", m.Content.Truncate(500))).ToList();
+    }
     private async Task<string> ExecutePendingAsync(AiAction pending, AgentContext ctx, CancellationToken ct)
     {
         var tool = _tools.FirstOrDefault(t => t.Name == pending.Tool);
@@ -147,33 +202,20 @@ public class SamosAgent
         "Posso ajudar com:\n" + string.Join("\n", tools.Select(t => $"• {t.Description}"));
 
     // ---------- Interpretation ----------
-    private async Task<Intent> InterpretAsync(string message, List<IAgentTool> allowed, CancellationToken ct)
+    private static string BuildPrompt(IEnumerable<IAgentTool> tools, AgentContext ctx)
     {
-        if (_ai.IsConfigured)
-        {
-            try
-            {
-                var raw = await _ai.ChatAsync(new[] { new AiChatMessage("system", BuildPrompt(allowed)), new AiChatMessage("user", message) }, true, ct);
-                var intent = ParseLlm(raw);
-                if (intent != null) return intent;
-            }
-            catch (Exception ex) when (ex is IntegrationException or JsonException) { _log.LogWarning("LLM indisponível, usando regras: {Msg}", ex.Message); }
-        }
-        return RuleBasedInterpreter.Interpret(message);
-    }
-
-    private static string BuildPrompt(IEnumerable<IAgentTool> tools)
-    {
+        var now = AppTime.Now;
         var sb = new StringBuilder();
-        sb.AppendLine("Você é o SamosAgent, assistente interno da empresa Samos. Responda SOMENTE com um JSON.");
-        sb.AppendLine($"Data/hora atual (America/Sao_Paulo): {AppTime.Now:yyyy-MM-ddTHH:mm}.");
-        sb.AppendLine("Para QUALQUER pergunta sobre dados da empresa ou ação, escolha uma ferramenta: {\"tool\":\"nome\",\"args\":{...}}.");
-        sb.AppendLine("Nunca invente números ou dados. Se for apenas conversa/saudação, responda {\"reply\":\"texto curto\"}.");
+        sb.AppendLine($"Você é o SamosAgent, o assistente pessoal e operacional de {ctx.UserName}, dono/colaborador da empresa Samos. Fale português do Brasil, de forma natural, direta e simpática (pode usar poucos emojis). Você conversa pelo WhatsApp: respostas curtas, sem markdown pesado.");
+        sb.AppendLine($"Agora: {now:yyyy-MM-ddTHH:mm} ({now:dddd}, America/Sao_Paulo). Interprete 'hoje', 'amanhã', 'sexta', 'daqui 2 horas', etc. a partir desta data e sempre envie datas no formato yyyy-MM-ddTHH:mm (horário local). Se o usuário não disser hora para um compromisso, use 09:00.");
+        sb.AppendLine("Responda SOMENTE com UM JSON por vez:");
+        sb.AppendLine("- Para executar algo: {\"tool\":\"nome\",\"args\":{...}}");
+        sb.AppendLine("- Para responder/conversar/perguntar algo que falta: {\"reply\":\"texto\"}");
+        sb.AppendLine("Regras: (1) Para QUALQUER dado da empresa ou da vida pessoal do usuário (tarefas, notas, gastos, agenda) use ferramenta; nunca invente números, ids ou dados. (2) Lembretes, compromissos, contas a pagar e coisas a fazer do usuário => criar_tarefa (não use criar_job). (3) Use o histórico da conversa para entender referências como 'essa', 'adia pra amanhã', 'e a de ontem?'. (4) Se faltar uma informação indispensável (ex.: o valor de um gasto), pergunte em {\"reply\"}. (5) Pedidos com várias partes: execute uma ferramenta por vez. (6) Ações sensíveis pedem confirmação automaticamente; não peça você mesmo.");
         sb.AppendLine("Ferramentas disponíveis (use exatamente estes nomes):");
         foreach (var t in tools) sb.AppendLine($"- {t.Name}: {t.Description}. args: {t.ArgsHelp}");
         return sb.ToString();
     }
-
     public static Intent? ParseLlm(string raw)
     {
         var start = raw.IndexOf('{'); var end = raw.LastIndexOf('}');
@@ -205,16 +247,30 @@ public static class RuleBasedInterpreter
 
         if (Regex.IsMatch(t, @"(como esta a empresa|resumo|panorama)")) return new("resumo_empresa", O(), null);
 
-        if (Regex.IsMatch(t, @"(crie|criar|agende|agendar|me avise|me lembre|lembrete|tarefa)"))
+        var wh = ParseWhen(t);
+        var m = Regex.Match(message, @"^\s*(?:conclu[ií]r?|concluí|feito|finalizar|marcar como feit[ao])\s+(?:a tarefa\s+)?#?(.+?)\s*$", RegexOptions.IgnoreCase);
+        if (m.Success) return new("concluir_tarefa", O(("tarefa", m.Groups[1].Value)), null);
+        if (Regex.IsMatch(t, @"(minhas tarefas|minha agenda|meus lembretes|o que tenho|pendencias|o que preciso fazer)"))
+            return new("listar_tarefas", O(("filtro", t.Contains("hoje") ? "hoje" : t.Contains("amanha") ? "amanha" : t.Contains("semana") ? "semana" : "pendentes")), null);
+        m = Regex.Match(message, @"(?:gastei|paguei|comprei)\s+R?\$?\s*([\d\.]+(?:,\d{1,2})?)\s*(?:reais\s*)?(?:em|no|na|de|com)?\s*(.*)$", RegexOptions.IgnoreCase);
+        if (m.Success) return new("registrar_gasto", O(("valor", m.Groups[1].Value.Replace(".", "").Replace(',', '.')), ("descricao", m.Groups[2].Value.Trim())), null);
+        m = Regex.Match(message, @"^\s*(?:anote|anota|guarde|salve)\s*(?:que|:)?\s*(.+)$", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        if (m.Success) return new("anotar", O(("texto", m.Groups[1].Value.Trim())), null);
+        m = Regex.Match(message, @"(?:me lembre|me lembra|lembrar|me avise|me avisa|lembrete|tarefa)\s*(?:de|para|que|:)?\s*(.+)$", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        if (m.Success && !t.Contains("sincroniz") && !t.Contains("relatorio"))
         {
-            var when = ParseWhen(t);
+            var title = Regex.Replace(m.Groups[1].Value, @"\s*(amanh[ãa]|hoje)?\s*([àa]s\s+\d{1,2}(?:(?::|h)\d{2})?h?)?\s*$", "", RegexOptions.IgnoreCase).Trim();
+            return new("criar_tarefa", O(("titulo", title.Length > 0 ? title : m.Groups[1].Value.Trim()), ("quando", wh?.ToString("yyyy-MM-ddTHH:mm"))), null);
+        }
+        if (Regex.IsMatch(t, @"(crie|criar|agende|agendar)"))
+        {
+            var when = wh;
             if (when != null)
             {
                 var type = t.Contains("sincroniz") || t.Contains("buscar novos leads") ? "SYNC_LEADS" : t.Contains("relatorio") ? "GENERATE_REPORT" : "REMINDER";
                 return new("criar_job", O(("tipo", type), ("quando", when.Value.ToString("yyyy-MM-ddTHH:mm")), ("mensagem", message)), null);
             }
-        }
-        if (t.Contains("sincroniz") && t.Contains("lead")) return new("sincronizar_leads", O(), null);
+        }        if (t.Contains("sincroniz") && t.Contains("lead")) return new("sincronizar_leads", O(), null);
 
         if ((t.Contains("cobranca") || t.Contains("cobrar")) && Regex.IsMatch(t, @"(gere|gerar|crie|criar|emita|emitir)"))
         {

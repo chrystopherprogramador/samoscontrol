@@ -44,7 +44,17 @@ public class WhatsAppConversation : BaseEntity
     /// <summary>null = the company number; otherwise the seller whose own WhatsApp holds this chat.</summary>
     public int? SellerId { get; set; }
     [MaxLength(200)] public string? LastMessagePreview { get; set; }
+    [MaxLength(600)] public string? PictureUrl { get; set; }
+    public DateTime? PictureCheckedAt { get; set; }
     public List<WhatsAppMessage> Messages { get; set; } = new();
+}
+
+/// <summary>Quick-reply template. SellerId null = shared by everyone.</summary>
+public class WhatsAppTemplate : BaseEntity
+{
+    public int? SellerId { get; set; }
+    [Required, MaxLength(80)] public string Name { get; set; } = "";
+    [Required, MaxLength(2000)] public string Body { get; set; } = "";
 }
 
 public enum MessageDirection { In, Out }

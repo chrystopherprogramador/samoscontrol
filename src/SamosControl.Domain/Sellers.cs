@@ -23,6 +23,8 @@ public class Seller : BaseEntity
     /// <summary>Monthly commissions stop after this many paid months per client; null = while the contract lasts.</summary>
     public int? MonthlyCommissionMonths { get; set; }
     public bool IsActive { get; set; } = true;
+    /// <summary>UFs this seller covers, comma separated (e.g. GO,DF); used to route SDR hand-offs.</summary>
+    [MaxLength(100)] public string? Regions { get; set; }
     [MaxLength(2000)] public string? Notes { get; set; }
     public int? PartnerContractId { get; set; }
 
@@ -33,6 +35,7 @@ public class Seller : BaseEntity
     [MaxLength(30)] public string? WaNumber { get; set; }
     [MaxLength(200)] public string? WaProfileName { get; set; }
     public DateTime? WaConnectedAt { get; set; }
+    [MaxLength(600)] public string? WaPictureUrl { get; set; }
 }
 
 public enum CommissionStatus { Pendente, EmProcessamento, Paga, Erro, Cancelada }

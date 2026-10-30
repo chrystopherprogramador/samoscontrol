@@ -187,7 +187,7 @@ public class CreateJobTool : AgentToolBase
     private readonly AutomationService _auto;
     public CreateJobTool(AutomationService a) => _auto = a;
     public override string Name => "criar_job";
-    public override string Description => "Cria uma tarefa/lembrete agendada";
+    public override string Description => "Agenda uma automação do SISTEMA (sincronizar leads, relatório, verificar serviços/cobranças). Para lembretes e tarefas pessoais use criar_tarefa";
     public override string ArgsHelp => "{\"tipo\":\"REMINDER|SYNC_LEADS|CHECK_SERVICES|GENERATE_REPORT|CHECK_BILLING\",\"quando\":\"yyyy-MM-ddTHH:mm (horário local)\",\"mensagem\":\"texto do lembrete\",\"recorrencia_minutos\":null}";
     public override string Permission => Perm.AutomationManage;
 

@@ -20,7 +20,7 @@
             {
                 var cid = P(c, "id"); var st = P(c, "status"); var un = P(c, "unread"); var nm = P(c, "name");
                 <a class="wa-ch @(scope == cid ? "active" : "")" href="?scope=@cid" title="@nm@(P(c, "number") != "" ? " · +" + P(c, "number") : "")">
-                    <span class="wa-av">@nm.Substring(0, 1).ToUpper()<i class="wa-dot @Dot(st)"></i></span>
+                    <span class="wa-av">@if (P(c, "pic") != "") { <img src="@P(c, "pic")" alt="" referrerpolicy="no-referrer" onerror="this.remove()" /> }<b>@nm.Substring(0, 1).ToUpper()</b><i class="wa-dot @Dot(st)"></i></span>
                     <span class="wa-ch-name">@nm</span>
                     @if (un != "0") { <span class="badge bg-danger rounded-pill">@un</span> }
                 </a>
@@ -48,15 +48,23 @@
                 <button type="button" class="btn btn-sm d-lg-none" id="waBack"><i class="bi bi-arrow-left"></i></button>
                 <span class="wa-av" id="waHeadAv"></span>
                 <div class="flex-grow-1"><div class="fw-semibold" id="waHeadName"></div><div class="small text-muted" id="waHeadSub"></div></div>
+                <select id="waHeadStatus" class="form-select form-select-sm d-none" title="Status do lead"></select>
                 <span id="waHeadLinks"></span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="waSound" title="Som de notificação"><i class="bi bi-bell"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-danger d-none" id="waDelete" title="Apagar conversa"><i class="bi bi-trash"></i></button>
             </div>
+            <div class="wa-leadinfo d-none" id="waLeadInfo"></div>
             <div class="wa-msgs" id="waMsgs"></div>
             <div class="wa-warn d-none" id="waWarn"></div>
             @if ((bool)ViewBag.CanSend)
             {
+                <div class="wa-pop d-none" id="waEmojis"></div>
+                <div class="wa-pop wa-tpl d-none" id="waTpls"></div>
                 <form class="wa-composer" id="waForm" autocomplete="off">
                     <input type="file" id="waFile" class="d-none" />
                     <button type="button" class="btn btn-light" id="waAttach" title="Anexar"><i class="bi bi-paperclip"></i></button>
+                    <button type="button" class="btn btn-light" id="waEmoji" title="Emojis"><i class="bi bi-emoji-smile"></i></button>
+                    <button type="button" class="btn btn-light" id="waTpl" title="Mensagens prontas"><i class="bi bi-lightning-charge"></i></button>
                     <textarea id="waText" class="form-control" rows="1" placeholder="Digite uma mensagem (Enter envia, Shift+Enter quebra linha)" maxlength="4000"></textarea>
                     <button class="btn btn-success" id="waSend" title="Enviar"><i class="bi bi-send-fill"></i></button>
                 </form>

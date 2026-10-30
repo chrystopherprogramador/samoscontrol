@@ -1,0 +1,75 @@
+@model List<AiKnowledge>
+@{
+    ViewData["Title"] = "Treinamento da IA";
+    var pending = Model.Where(k => k.Status == KnowledgeStatus.Pendente).OrderBy(k => k.Origin == "Lacuna" ? 0 : 1).ThenBy(k => k.Id).ToList();
+    var done = Model.Where(k => k.Status == KnowledgeStatus.Respondida).ToList();
+    var skipped = Model.Where(k => k.Status == KnowledgeStatus.Ignorada).ToList();
+    var total = done.Count + pending.Count;
+    var pct = total == 0 ? 0 : 100 * done.Count / total;
+}
+<link rel="stylesheet" href="~/css/training.css" asp-append-version="true" />
+
+<div class="card mb-3"><div class="card-body">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <h6 class="mb-0"><i class="bi bi-mortarboard"></i> A IA só fala o que você ensinou</h6>
+        <span class="text-muted small">Responda com precisão: números, prazos e regras reais. O que não estiver aqui, ela não inventa — ela repassa ao vendedor e pergunta a você.</span>
+        <form method="post" asp-action="Generate" class="ms-auto"><button class="btn btn-sm btn-primary"><i class="bi bi-stars"></i> A IA fazer mais perguntas</button></form>
+    </div>
+    <div class="progress" style="height:10px"><div class="progress-bar" style="width:@pct%"></div></div>
+    <div class="small text-muted mt-1">@done.Count respondidas · @pending.Count pendentes · @skipped.Count dispensadas</div>
+</div></div>
+
+<div class="row g-3">
+<div class="col-xl-7">
+    <h6 class="mb-2">Perguntas da IA para você <span class="badge bg-warning text-dark">@pending.Count</span></h6>
+    @foreach (var k in pending)
+    {
+        <form method="post" asp-action="Answer" asp-route-id="@k.Id" id="q@(k.Id)" class="card mb-2 q-card @(k.Origin == "Lacuna" ? "q-gap" : "")"><div class="card-body">
+            <div class="d-flex align-items-center mb-1"><span class="badge text-bg-secondary">@k.Topic</span>
+                @if (k.Origin == "Lacuna") { <span class="badge bg-danger ms-1">um lead perguntou isso</span> }</div>
+            <div class="fw-semibold mb-2">@k.Question</div>
+            <textarea name="answer" class="form-control mb-2" rows="3" maxlength="4000" placeholder="Responda de forma completa e objetiva..."></textarea>
+            <div class="d-flex gap-2"><button class="btn btn-sm btn-primary"><i class="bi bi-check2"></i> Ensinar</button>
+                <button class="btn btn-sm btn-outline-secondary" name="skip" value="true" formnovalidate>Não se aplica</button></div>
+        </div></form>
+    }
+    @if (pending.Count == 0) { <div class="card"><div class="card-body text-muted">Nenhuma pergunta pendente. Clique em "A IA fazer mais perguntas" para aprofundar.</div></div> }
+
+    <h6 class="mt-4 mb-2">Adicionar conhecimento livre</h6>
+    <form method="post" asp-action="Add" class="card"><div class="card-body row g-2">
+        <div class="col-md-4"><input name="topic" class="form-control" maxlength="100" placeholder="Tópico (ex.: Preço)" /></div>
+        <div class="col-md-8"><input name="question" class="form-control" maxlength="600" placeholder="Pergunta que o lead pode fazer" required /></div>
+        <div class="col-12"><textarea name="answer" class="form-control" rows="3" maxlength="4000" placeholder="Resposta correta" required></textarea></div>
+        <div class="col-12"><button class="btn btn-sm btn-outline-primary">Adicionar</button></div>
+    </div></form>
+</div>
+
+<div class="col-xl-5">
+    <div class="card mb-3 map-ai"><div class="card-body">
+        <h6><i class="bi bi-chat-dots"></i> Testar a IA</h6>
+        <div class="small text-muted mb-2">Pergunte como um lead faria. Se ela não souber, a lacuna vira uma pergunta pendente.@(ViewBag.AiConfigured ? "" : " (Requer o token da IA em Configurações.)")</div>
+        <div class="input-group"><input id="testQ" class="form-control" placeholder="Quanto custa? Tem fidelidade?" /><button class="btn btn-primary" id="testGo" type="button">Perguntar</button></div>
+        <div id="testOut" class="mt-2 small"></div>
+    </div></div>
+
+    <h6 class="mb-2">Base de conhecimento <span class="badge bg-success">@done.Count</span></h6>
+    @foreach (var g in done.GroupBy(k => k.Topic))
+    {
+        <div class="small text-muted mt-2">@g.Key</div>
+        @foreach (var k in g)
+        {
+            <div class="card mb-1"><div class="card-body py-2">
+                <div class="fw-semibold small">@k.Question</div>
+                <div class="small" style="white-space:pre-wrap">@k.Answer</div>
+                <div class="d-flex gap-2 mt-1">
+                    <form method="post" asp-action="Reopen" asp-route-id="@k.Id"><button class="btn btn-link btn-sm p-0">Reescrever</button></form>
+                    <form method="post" asp-action="Delete" asp-route-id="@k.Id" data-confirm="Apagar este conhecimento?"><button class="btn btn-link btn-sm p-0 text-danger">Apagar</button></form>
+                </div>
+            </div></div>
+        }
+    }
+    @if (done.Count == 0) { <div class="text-muted small">Nada ensinado ainda.</div> }
+</div>
+</div>
+
+@section Scripts { <script src="~/js/training.js" asp-append-version="true"></script> }

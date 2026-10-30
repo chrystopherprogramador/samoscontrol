@@ -1,0 +1,50 @@
+@model SdrCampaign
+@{
+    ViewData["Title"] = Model.Name;
+    var st = (SdrStats)ViewBag.Stats;
+    var contacts = (List<SdrContact>)ViewBag.Contacts;
+    var sellers = (Dictionary<int, string>)ViewBag.Sellers;
+    int N(SdrStage s) => st.ByStage.TryGetValue(s, out var v) ? v : 0;
+    var contacted = st.Variants.Sum(v => v.Sent); var replied = st.Variants.Sum(v => v.Replied);
+    string Pct(int a, int b) => b == 0 ? "–" : (100.0 * a / b).ToString("0.#") + "%";
+    var variants = SdrService.SplitVariants(Model.Variants);
+}
+<div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+    <span class="badge fs-6 @(Model.IsActive ? "bg-success" : "bg-secondary")">@(Model.IsActive ? "Ativo" : "Pausado")</span>
+    <span class="text-muted small">Envia por: @ViewBag.SellerName · @Model.StartHour h–@Model.EndHour h · limite @Model.DailyLimit/dia</span>
+    <div class="ms-auto d-flex gap-2">
+        <form method="post" asp-action="Toggle" asp-route-id="@Model.Id"><button class="btn @(Model.IsActive ? "btn-warning" : "btn-success")"><i class="bi @(Model.IsActive ? "bi-pause-fill" : "bi-play-fill")"></i> @(Model.IsActive ? "Pausar" : "Ativar")</button></form>
+        <form method="post" asp-action="Enqueue" asp-route-id="@Model.Id"><button class="btn btn-outline-primary"><i class="bi bi-people"></i> Atualizar fila</button></form>
+        <a class="btn btn-outline-secondary" asp-action="Edit" asp-route-id="@Model.Id"><i class="bi bi-pencil"></i> Editar</a>
+        <form method="post" asp-action="Delete" asp-route-id="@Model.Id" data-confirm="Excluir a campanha e o histórico da fila?"><button class="btn btn-outline-danger"><i class="bi bi-trash"></i></button></form>
+    </div>
+</div>
+<div class="row g-3 mb-3">
+    @foreach (var (label, val) in new[] { ("Na fila", N(SdrStage.Fila).ToString()), ("Contatados", contacted.ToString()), ("Responderam", replied + " (" + Pct(replied, contacted) + ")"), ("Repassados", N(SdrStage.Repassado).ToString()), ("Sem WhatsApp", N(SdrStage.SemWhatsApp).ToString()), ("Opt-out", N(SdrStage.OptOut).ToString()), ("Hoje", st.SentToday + "/" + Model.DailyLimit) })
+    {
+        <div class="col-6 col-md-3 col-xl"><div class="card"><div class="card-body py-2"><div class="kpi-label">@label</div><div class="fw-bold fs-5">@val</div></div></div></div>
+    }
+</div>
+<div class="row g-3 mb-3">
+    <div class="col-lg-5"><div class="card h-100"><div class="card-body">
+        <h6>Resposta por variação</h6>
+        <table class="table table-sm mb-0"><thead><tr><th>Variação</th><th>Enviadas</th><th>Respostas</th><th>Taxa</th></tr></thead><tbody>
+        @foreach (var v in st.Variants) { <tr><td title="@(v.Variant < variants.Count ? variants[v.Variant] : "")">#@(v.Variant + 1)</td><td>@v.Sent</td><td>@v.Replied</td><td>@Pct(v.Replied, v.Sent)</td></tr> }
+        @if (st.Variants.Count == 0) { <tr><td colspan="4" class="text-muted">Sem envios ainda.</td></tr> }
+        </tbody></table>
+    </div></div></div>
+    <div class="col-lg-7"><div class="card h-100"><div class="card-body">
+        <h6>Mensagens da campanha</h6>
+        @for (var i = 0; i < variants.Count; i++) { <div class="small border-start border-3 ps-2 mb-2" style="white-space:pre-wrap">@(i + 1). @variants[i]</div> }
+    </div></div></div>
+</div>
+<div class="card"><div class="table-responsive"><table class="table table-hover mb-0 align-middle"><thead><tr><th>Lead</th><th>Telefone</th><th>Etapa</th><th>Envios</th><th>Score</th><th>Vendedor</th><th>Resumo / erro</th></tr></thead><tbody>
+@foreach (var c in contacts)
+{
+    <tr><td><a asp-controller="Leads" asp-action="Details" asp-route-id="@c.LeadId" class="text-decoration-none">@c.Lead?.Name</a></td><td>@c.Phone</td>
+        <td><span class="badge @(c.Stage switch { SdrStage.Repassado => "bg-success", SdrStage.Respondeu => "bg-info", SdrStage.Erro or SdrStage.SemWhatsApp => "bg-danger", SdrStage.OptOut => "bg-dark", _ => "bg-secondary" })">@c.Stage</span></td>
+        <td>@c.Attempts</td><td>@(c.Score > 0 ? c.Score.ToString() : "–")</td><td>@(c.HandoffSellerId.HasValue && sellers.TryGetValue(c.HandoffSellerId.Value, out var sn) ? sn : "–")</td>
+        <td class="small text-muted">@(c.Error ?? c.Summary)</td></tr>
+}
+@if (contacts.Count == 0) { <tr><td colspan="7" class="text-center text-muted py-4">Fila vazia. Verifique os filtros ou clique em "Atualizar fila".</td></tr> }
+</tbody></table></div></div>

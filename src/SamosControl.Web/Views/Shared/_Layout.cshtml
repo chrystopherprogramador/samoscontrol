@@ -28,6 +28,7 @@
                 <a class="@Active("Leads")" asp-controller="Leads" asp-action="Index"><i class="bi bi-bullseye"></i> Leads</a>
                 <a class="@Active("Customers")" asp-controller="Customers" asp-action="Index"><i class="bi bi-people"></i> Clientes</a>
                 <a asp-controller="Leads" asp-action="Pipeline"><i class="bi bi-kanban"></i> Pipeline</a>
+                <a class="@Active("Map")" asp-controller="Map" asp-action="Index"><i class="bi bi-globe-americas"></i> Mapa de leads</a>
             }
             @if (Perms.Has(Perm.ContractsView))
             {
@@ -49,13 +50,14 @@
             @if (Perms.Has(Perm.WhatsAppView))
             {
                 <div class="grp">WhatsApp</div>
-                <a class="@Active("WhatsApp")" asp-controller="WhatsApp" asp-action="Index"><i class="bi bi-whatsapp"></i> Conversas</a>
+                <a class="@Active("WhatsApp")" asp-controller="WhatsApp" asp-action="Index"><i class="bi bi-whatsapp"></i> Conversas <span class="badge bg-success rounded-pill ms-1 d-none" id="waNavBadge"></span></a>
             }
             @if (Perms.Has(Perm.AiUse))
             {
                 <div class="grp">IA</div>
                 <a asp-controller="Assistant" asp-action="Index"><i class="bi bi-robot"></i> Assistente</a>
                 @if (Perms.Has(Perm.AiHistory)) { <a asp-controller="Assistant" asp-action="History"><i class="bi bi-clock-history"></i> Histórico</a> }
+                @if (Perms.Has(Perm.SettingsManage)) { <a class="@Active("Training")" asp-controller="Training" asp-action="Index"><i class="bi bi-mortarboard"></i> Treinamento da IA</a><a class="@Active("Sdr")" asp-controller="Sdr" asp-action="Index"><i class="bi bi-megaphone"></i> SDR automático</a> }
             }
             @if (Perms.Has(Perm.AutomationView))
             {
@@ -112,6 +114,7 @@
 <script src="~/lib/signalr/signalr.min.js"></script>
 <script src="~/js/site.js" asp-append-version="true"></script>
 <script src="~/js/ui.js"></script>
+@if (Perms.Has(Perm.WhatsAppView)) { <script src="~/js/wa-notify.js" asp-append-version="true"></script> }
 @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

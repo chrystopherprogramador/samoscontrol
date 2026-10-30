@@ -44,7 +44,7 @@ public class LeadsController : AppController
         ViewBag.Users = await _db.Users.Where(u => u.IsActive).OrderBy(u => u.Name).ToListAsync();
     }
 
-    public async Task<IActionResult> Index(string? q, LeadStatus? status, int? sourceId, int page = 1)
+    public async Task<IActionResult> Index(string? q, LeadStatus? status, int? sourceId, string? state, string? city, int page = 1)
     {
         var query = _db.Leads.Include(l => l.Source).Include(l => l.AssignedUser).Include(l => l.Tags).ThenInclude(t => t.Tag).AsQueryable();
         if (!string.IsNullOrWhiteSpace(q))
@@ -56,12 +56,14 @@ public class LeadsController : AppController
         }
         if (status.HasValue) query = query.Where(l => l.Status == status);
         if (sourceId.HasValue) query = query.Where(l => l.SourceId == sourceId);
+        if (!string.IsNullOrWhiteSpace(state)) { var uf = state.Trim().ToUpper(); query = query.Where(l => l.State == uf); }
+        if (!string.IsNullOrWhiteSpace(city)) { var cl = city.Trim(); query = query.Where(l => l.City != null && EF.Functions.ILike(l.City, cl)); }
         const int size = 25;
         var total = await query.CountAsync();
         page = Math.Max(1, page);
         var items = await query.OrderByDescending(l => l.CreatedAt).Skip((page - 1) * size).Take(size).ToListAsync();
         ViewBag.Total = total; ViewBag.Page = page; ViewBag.Pages = (int)Math.Ceiling(total / (double)size);
-        ViewBag.Q = q; ViewBag.Status = status; ViewBag.SourceId = sourceId;
+        ViewBag.Q = q; ViewBag.Status = status; ViewBag.SourceId = sourceId; ViewBag.State = state; ViewBag.City = city;
         await LoadLookups();
         return View(items);
     }
@@ -345,4 +347,20 @@ public class CustomersController : AppController
         }
         return RedirectToAction(nameof(Details), new { id });
     }
+}
+
+
+[RequirePermission(Perm.CrmView)]
+public class MapController : AppController
+{
+    private readonly MapService _map;
+    public MapController(MapService map) => _map = map;
+
+    public IActionResult Index() => View();
+
+    [HttpGet]
+    public async Task<IActionResult> Data(CancellationToken ct) => Json(await _map.GetAsync(ct));
+
+    [HttpPost]
+    public async Task<IActionResult> Insights(CancellationToken ct) => Json(await _map.InsightsAsync(ct));
 }

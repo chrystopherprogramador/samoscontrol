@@ -23,6 +23,7 @@ public class SellerForm
     public decimal MonthlyPercent { get; set; }
     public int? MonthlyCommissionMonths { get; set; }
     public bool IsActive { get; set; } = true;
+    public string? Regions { get; set; }
     public string? Notes { get; set; }
 }
 
@@ -55,7 +56,7 @@ public class SellersController : AppController
         return View("Form", new SellerForm
         {
             Id = s.Id, Name = s.Name, Document = s.Document, Email = s.Email, Phone = s.Phone, Address = s.Address, UserId = s.UserId, PixKey = s.PixKey, PixKeyType = s.PixKeyType,
-            ImplementationPercent = s.ImplementationPercent, MonthlyPercent = s.MonthlyPercent, MonthlyCommissionMonths = s.MonthlyCommissionMonths, IsActive = s.IsActive, Notes = s.Notes
+            ImplementationPercent = s.ImplementationPercent, MonthlyPercent = s.MonthlyPercent, MonthlyCommissionMonths = s.MonthlyCommissionMonths, IsActive = s.IsActive, Regions = s.Regions, Notes = s.Notes
         });
     }
 
@@ -73,6 +74,7 @@ public class SellersController : AppController
             s.Name = f.Name.Trim(); s.Document = f.Document?.Trim(); s.Email = f.Email?.Trim(); s.Phone = f.Phone?.Trim(); s.Address = f.Address?.Trim();
             s.UserId = f.UserId; s.PixKey = f.PixKey?.Trim(); s.PixKeyType = f.PixKeyType; s.ImplementationPercent = f.ImplementationPercent; s.MonthlyPercent = f.MonthlyPercent;
             s.MonthlyCommissionMonths = f.MonthlyCommissionMonths; s.IsActive = f.IsActive; s.Notes = f.Notes;
+            s.Regions = string.IsNullOrWhiteSpace(f.Regions) ? null : string.Join(',', f.Regions.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim().ToUpperInvariant()).Where(x => x.Length == 2).Distinct());
             if (f.Id == 0) _db.Sellers.Add(s);
             await _db.SaveChangesAsync();
             Flash("Vendedor salvo. Alterações de percentual valem para novos contratos; os já emitidos mantêm o percentual combinado.");

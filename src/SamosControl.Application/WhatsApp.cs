@@ -68,6 +68,19 @@ public class WhatsAppService
         conv.LastMessageAt = m.Timestamp;
         conv.LastMessagePreview = Preview(body, true);
         if (conv.LeadId.HasValue) _db.Interactions.Add(new Interaction { LeadId = conv.LeadId, CustomerId = conv.CustomerId, Type = InteractionType.WhatsApp, Description = "WhatsApp enviado: " + body.Truncate(300), UserId = userId });
+        if (userId.HasValue && !fromAgent && conv.LeadId.HasValue)
+        {
+            var lead = await _db.Leads.FindAsync(conv.LeadId.Value);
+            if (lead != null)
+            {
+                lead.LastInteractionAt = DateTime.UtcNow;
+                if (lead.Status == LeadStatus.Novo)
+                {
+                    lead.Status = LeadStatus.Contato;
+                    _db.Interactions.Add(new Interaction { LeadId = lead.Id, Type = InteractionType.Sistema, Description = "Status alterado para Contato (primeira mensagem via WhatsApp)", UserId = userId });
+                }
+            }
+        }
         await _db.SaveChangesAsync();
         return m;
     }
@@ -178,10 +191,31 @@ public class WhatsAppService
         }
         await _db.SaveChangesAsync();
 
+        if (conv.PictureCheckedAt == null || conv.PictureCheckedAt < DateTime.UtcNow.AddHours(-12))
+        {
+            var cid = conv.Id;
+            _ = Task.Run(async () =>
+            {
+                try { using var sc = _scopes.CreateScope(); await sc.ServiceProvider.GetRequiredService<WhatsAppService>().EnsurePictureAsync(cid); }
+                catch (Exception ex) { _log.LogDebug(ex, "Foto de perfil indisponível"); }
+            });
+        }
+
         if (sellerId is null && !m.FromMe && !string.IsNullOrWhiteSpace(m.Text)) _ = Task.Run(() => DispatchToAgentAsync(m.Phone, m.Text!));
+        if (!m.FromMe && !string.IsNullOrWhiteSpace(m.Text)) _ = Task.Run(() => DispatchToSdrAsync(sellerId, m.Phone, m.Text!));
     }
 
-    /// <summary>Only registered, active users (matched by phone) with ai.use can talk to the agent.</summary>
+    private async Task DispatchToSdrAsync(int? sellerId, string phone, string text)
+    {
+        try
+        {
+            using var scope = _scopes.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<SdrService>().HandleReplyAsync(sellerId, phone, text);
+        }
+        catch (Exception ex) { _log.LogError(ex, "Falha no SDR ao tratar resposta do lead"); }
+    }
+
+    /// <summary>Only registered, active users (matched by phone) with ai.use  can talk to the agent.</summary>
     public async Task DispatchToAgentAsync(string phone, string text)
     {
         try
@@ -191,7 +225,7 @@ public class WhatsAppService
             var key = PhoneUtil.Key(phone);
             var users = await db.Users.Where(u => u.IsActive && u.Phone != null).ToListAsync();
             var user = users.FirstOrDefault(u => PhoneUtil.Key(u.Phone) == key);
-            if (user is null) return;
+            if (user is null) { _log.LogInformation("Mensagem de {Phone} ignorada pelo agente: nenhum usuário ativo com esse telefone (cadastre em Usuários).", phone); return; }
             var perms = scope.ServiceProvider.GetRequiredService<PermissionService>();
             if (!await perms.HasAsync(user.Id, Perm.AiUse)) return;
             var agent = scope.ServiceProvider.GetRequiredService<SamosAgent>();
@@ -384,6 +418,69 @@ public class WhatsAppService
         var n = sp.GetRequiredService<NotificationService>();
         await n.CreateAsync(NotificationType.Warning, NotificationSource.Crm, "Pedido de liberação de lead",
             $"{seller.Name} quer atender o lead \"{lead.Name}\", hoje com outro vendedor. Abra o lead e use \"Atribuir a\" para autorizar.", $"/Leads/Details/{leadId}");
+    }
+
+    // ---------- Validação de número, foto de perfil, exclusão ----------
+
+    private string? InstanceFor(Seller? s) => s is null ? _settings.Get(SettingKeys.EvolutionInstance) : (s.WaStatus == "CONECTADO" ? s.WaInstance : null);
+
+    /// <summary>
+    /// Confirma que o número tem WhatsApp. Devolve o número canônico (corrige o 9º dígito).
+    /// Lança InvalidOperationException se não existir. Se não houver como consultar, devolve o número original.
+    /// </summary>
+    public async Task<string> ValidateNumberAsync(int? sellerId, string phone, CancellationToken ct = default)
+    {
+        var p = PhoneUtil.Normalize(phone) ?? throw new InvalidOperationException("Telefone inválido.");
+        if (!_inst.ServerConfigured) return p;
+        Seller? s = sellerId.HasValue ? await _db.Sellers.FindAsync(new object[] { sellerId.Value }, ct) : null;
+        var inst = InstanceFor(s);
+        if (string.IsNullOrEmpty(inst)) return p;
+        try
+        {
+            var (exists, number) = await _inst.CheckNumberAsync(inst, p, ct);
+            if (!exists) throw new InvalidOperationException("Este número não tem WhatsApp.");
+            return number ?? p;
+        }
+        catch (IntegrationException ex) { _log.LogWarning(ex, "Não foi possível validar o número; seguindo sem validar"); return p; }
+    }
+
+    public async Task EnsurePictureAsync(int conversationId, bool force = false, CancellationToken ct = default)
+    {
+        var c = await _db.WhatsAppConversations.FindAsync(new object[] { conversationId }, ct);
+        if (c is null || (!force && c.PictureCheckedAt > DateTime.UtcNow.AddHours(-12))) return;
+        Seller? s = c.SellerId.HasValue ? await _db.Sellers.FindAsync(new object[] { c.SellerId.Value }, ct) : null;
+        var inst = InstanceFor(s);
+        if (string.IsNullOrEmpty(inst) || !_inst.ServerConfigured) return;
+        try { c.PictureUrl = await _inst.GetProfilePictureAsync(inst, c.Phone, ct); }
+        catch (IntegrationException) { }
+        c.PictureCheckedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task EnsureSellerPictureAsync(Seller s, CancellationToken ct = default)
+    {
+        if (s.WaStatus != "CONECTADO" || s.WaInstance is null || string.IsNullOrEmpty(s.WaNumber) || s.WaPictureUrl != null || !_inst.ServerConfigured) return;
+        try { s.WaPictureUrl = await _inst.GetProfilePictureAsync(s.WaInstance, s.WaNumber, ct); await _db.SaveChangesAsync(ct); }
+        catch (IntegrationException) { }
+    }
+
+    public async Task DeleteConversationAsync(int id)
+    {
+        var msgs = await _db.WhatsAppMessages.Where(m => m.ConversationId == id).ToListAsync();
+        _db.WhatsAppMessages.RemoveRange(msgs);
+        var c = await _db.WhatsAppConversations.FindAsync(id);
+        if (c != null) _db.WhatsAppConversations.Remove(c);
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>Mensagens recebidas depois de afterId visíveis ao usuário (para push/som).</summary>
+    public async Task<List<(int Id, int ConversationId, string Name, string Preview, int? SellerId)>> NewIncomingAsync(IQueryable<WhatsAppConversation> visible, int afterId)
+    {
+        var rows = await _db.WhatsAppMessages
+            .Where(m => m.Id > afterId && m.Direction == MessageDirection.In && visible.Any(c => c.Id == m.ConversationId))
+            .OrderBy(m => m.Id).Take(20)
+            .Select(m => new { m.Id, m.ConversationId, m.Body, Name = m.Conversation!.ContactName, m.Conversation.Phone, m.Conversation.SellerId }).ToListAsync();
+        return rows.Select(r => (r.Id, r.ConversationId, string.IsNullOrWhiteSpace(r.Name) ? r.Phone : r.Name!, (r.Body ?? "").Truncate(120), r.SellerId)).ToList();
     }
 
     public async Task SendChargeLinkAsync(int chargeId, int? userId)

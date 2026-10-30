@@ -1,0 +1,35 @@
+@model SdrCampaign
+@{
+    ViewData["Title"] = Model.Id == 0 ? "Nova campanha SDR" : "Editar campanha SDR";
+    var sellers = (List<Seller>)ViewBag.Sellers;
+}
+<form method="post" asp-action="Save" class="card" style="max-width:900px"><div class="card-body"><div class="row g-3">
+    <input type="hidden" asp-for="Id" />
+    <div class="col-md-8"><label class="form-label">Nome da campanha *</label><input asp-for="Name" class="form-control" maxlength="120" required /></div>
+    <div class="col-md-4 align-self-end"><div class="form-check"><input asp-for="AiReplies" class="form-check-input" /><label class="form-check-label" asp-for="AiReplies">IA responde o lead</label></div></div>
+
+    <div class="col-12"><h6 class="mb-0">Quem dispara</h6></div>
+    <div class="col-md-6"><label class="form-label">Número que envia</label>
+        <select asp-for="SellerId" class="form-select"><option value="">Número da empresa (repasse por região/rodízio)</option>
+        @foreach (var s in sellers) { <option value="@s.Id">@s.Name — @(s.WaStatus == "CONECTADO" ? "conectado " + s.WaNumber : "WhatsApp desconectado")</option> }</select>
+        <div class="form-text">Com o número de um vendedor, ele continua a conversa depois do repasse. Com o da empresa, o lead qualificado vai para o vendedor da região (ou rodízio).</div></div>
+
+    <div class="col-12"><h6 class="mb-0">Proteção do número</h6></div>
+    <div class="col-md-3"><label class="form-label">Limite por dia</label><input asp-for="DailyLimit" type="number" min="1" max="500" class="form-control" /><div class="form-text">Comece com 20–30.</div></div>
+    <div class="col-md-3"><label class="form-label">Início (hora)</label><input asp-for="StartHour" type="number" min="0" max="23" class="form-control" /></div>
+    <div class="col-md-3"><label class="form-label">Fim (hora)</label><input asp-for="EndHour" type="number" min="1" max="24" class="form-control" /></div>
+    <div class="col-md-3"><label class="form-label">Intervalo (seg.)</label><div class="input-group"><input asp-for="MinDelaySec" type="number" min="20" class="form-control" /><input asp-for="MaxDelaySec" type="number" min="20" class="form-control" /></div><div class="form-text">mín. e máx., aleatório. Não envia aos domingos.</div></div>
+
+    <div class="col-12"><h6 class="mb-0">Quem entra na fila</h6></div>
+    <div class="col-md-4"><label class="form-label">Status do lead</label><select asp-for="FilterStatus" class="form-select"><option value="">Qualquer (em aberto)</option>@foreach (var st in new[] { LeadStatus.Novo, LeadStatus.Contato, LeadStatus.Qualificado }) { <option value="@st">@st</option> }</select></div>
+    <div class="col-md-4"><label class="form-label">Estado (UF)</label><input asp-for="FilterState" class="form-control" maxlength="2" placeholder="GO" /></div>
+    <div class="col-md-4"><label class="form-label">Segmento contém</label><input asp-for="FilterSegment" class="form-control" maxlength="100" /></div>
+
+    <div class="col-12"><h6 class="mb-0">Mensagens</h6></div>
+    <div class="col-12"><label class="form-label">Primeira mensagem (variações separadas por uma linha com ---)</label><textarea asp-for="Variants" class="form-control" rows="7"></textarea><div class="form-text">Use {{nome}}, {{empresa}}, {{cidade}}, {{segmento}}. Termine com uma pergunta fácil de responder. Várias variações evitam texto idêntico e mostram qual responde mais.</div></div>
+    <div class="col-md-8"><label class="form-label">Follow-up (se não responder)</label><textarea asp-for="FollowUpText" class="form-control" rows="3"></textarea></div>
+    <div class="col-md-2"><label class="form-label">Após (horas)</label><input asp-for="FollowUpHours" type="number" min="1" class="form-control" /></div>
+    <div class="col-md-2"><label class="form-label">Máx. follow-ups</label><input asp-for="MaxFollowUps" type="number" min="0" max="3" class="form-control" /></div>
+    <div class="col-12"><label class="form-label">Objetivo da campanha (contexto para a IA)</label><textarea asp-for="Pitch" class="form-control" rows="2" maxlength="2000" placeholder="Ex.: oferecer o sistema de gestão para clínicas e agendar uma demonstração."></textarea><div class="form-text">Fatos sobre produto e preço ficam no <a asp-controller="Training" asp-action="Index">Treinamento da IA</a>.</div></div>
+    <div class="col-md-4"><label class="form-label">Alertar se o vendedor não responder em (min.)</label><input asp-for="HandoffAlertMinutes" type="number" min="1" class="form-control" /></div>
+</div></div><div class="card-footer"><button class="btn btn-primary">Salvar</button> <a class="btn btn-outline-secondary" asp-action="Index">Cancelar</a></div></form>

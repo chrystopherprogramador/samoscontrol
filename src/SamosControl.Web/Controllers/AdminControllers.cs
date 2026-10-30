@@ -75,7 +75,11 @@ public class UsersController : AppController
             if (pwErr != null) { FlashFail(pwErr); return View("Form", f); }
         }
         if (await LosesLastAdmin(u, f)) { FlashFail("Não é possível remover o último administrador ativo."); return View("Form", f); }
-        var old = $"role={u.RoleId} active={u.IsActive}";
+        var newEmail = (f.Email ?? "").Trim().ToLowerInvariant();
+        if (!newEmail.Contains('@')) { FlashFail("E-mail inválido."); return View("Form", f); }
+        if (newEmail != u.Email && await _db.Users.AnyAsync(x => x.Email == newEmail && x.Id != id)) { FlashFail("Já existe um usuário com este e-mail."); return View("Form", f); }
+        var old = $"email={u.Email} role={u.RoleId} active={u.IsActive}";
+        u.Email = newEmail;
         u.Name = f.Name.Trim(); u.Phone = f.Phone?.Trim(); u.RoleId = f.RoleId; u.IsActive = f.IsActive;
         if (!string.IsNullOrEmpty(f.Password)) u.PasswordHash = AuthService.Hash(f.Password);
         await _db.SaveChangesAsync();

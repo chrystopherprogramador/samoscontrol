@@ -165,6 +165,8 @@ public class SchedulerWorker : BackgroundService
             {
                 using var scope = _scopes.CreateScope();
                 await scope.ServiceProvider.GetRequiredService<AutomationService>().RunDueAsync(ct);
+                await scope.ServiceProvider.GetRequiredService<PersonalService>().RunRemindersAsync(ct);
+                await scope.ServiceProvider.GetRequiredService<SdrService>().RunAsync(ct);
             }
             catch (OperationCanceledException) { }
             catch (Exception ex) { _log.LogError(ex, "Erro no agendador"); }

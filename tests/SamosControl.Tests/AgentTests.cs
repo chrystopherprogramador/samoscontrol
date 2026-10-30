@@ -39,6 +39,60 @@ public class AgentTests
     }
 
     [Fact]
+    public async Task PersonalReminder_CreateListComplete_ViaAgent()
+    {
+        using var h = new TestHost(AsaasCfg); using var sc = h.Scope();
+        var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
+        var u = await SeedAsync(db, Perm.AiUse);
+        var agent = sc.ServiceProvider.GetRequiredService<SamosAgent>();
+        var ctx = new AgentContext(u.Id, "Op", "WHATSAPP", null);
+
+        await agent.HandleAsync("me lembre de ligar para o contador amanhã às 9h", ctx);
+        var t = await db.PersonalTasks.SingleAsync(x => x.UserId == u.Id);
+        Assert.Contains("contador", t.Title);
+        Assert.NotNull(t.RemindAt);
+
+        var list = await agent.HandleAsync("minhas tarefas", ctx);
+        Assert.Contains("contador", list);
+
+        await agent.HandleAsync($"concluir {t.Id}", ctx);
+        Assert.True((await db.PersonalTasks.SingleAsync()).Done);
+    }
+
+    [Fact]
+    public async Task PersonalExpense_IsRecorded_ViaAgent()
+    {
+        using var h = new TestHost(AsaasCfg); using var sc = h.Scope();
+        var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
+        var u = await SeedAsync(db, Perm.AiUse);
+        var agent = sc.ServiceProvider.GetRequiredService<SamosAgent>();
+        await agent.HandleAsync("gastei 45,90 no almoço", new AgentContext(u.Id, "Op", "WHATSAPP", null));
+        var e = await db.PersonalExpenses.SingleAsync();
+        Assert.Equal(45.90m, e.Amount);
+    }
+
+    [Fact]
+    public async Task Map_AggregatesByState_AndSuggestsActions()
+    {
+        using var h = new TestHost(AsaasCfg); using var sc = h.Scope();
+        var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Leads.AddRange(
+            new Lead { Name = "A", State = "sp", City = "Campinas", Status = LeadStatus.Novo },
+            new Lead { Name = "B", State = "SP", City = "Campinas", Status = LeadStatus.Ganho },
+            new Lead { Name = "C", State = "GO", Status = LeadStatus.Contato },
+            new Lead { Name = "D" });
+        await db.SaveChangesAsync();
+        var map = sc.ServiceProvider.GetRequiredService<MapService>();
+        var d = await map.GetAsync();
+        Assert.Equal(4, d.Total);
+        var sp = d.States.Single(s => s.Uf == "SP");
+        Assert.Equal(2, sp.Total); Assert.Equal(1, sp.Novos); Assert.Equal(1, sp.Ganhos);
+        Assert.True(d.Unlocated >= 1);
+        var ins = await map.InsightsAsync();
+        Assert.NotEmpty(ins.Actions);
+    }
+
+    [Fact]
     public async Task CancelWord_DiscardsPendingAction()
     {
         using var h = new TestHost(AsaasCfg); using var sc = h.Scope();

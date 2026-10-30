@@ -97,7 +97,7 @@ app.Use(async (ctx, next) =>
     h["X-Content-Type-Options"] = "nosniff";
     h["X-Frame-Options"] = "DENY";
     h["Referrer-Policy"] = "same-origin";
-    h["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+    h["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
     await next();
 });
 app.UseStaticFiles();

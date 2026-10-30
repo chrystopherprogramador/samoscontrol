@@ -71,3 +71,15 @@ Cada vendedor pode ter o próprio número. Em **Vendedores → Conectar / gerenc
 - Vendedor ligado a um usuário (campo *Usuário* do vendedor) vê só o próprio chat; demais usuários veem só o número da empresa.
 - Chats de vendedores nunca acionam o agente de IA.
 
+
+## WhatsApp: validação, mensagens prontas, notificações
+- Antes de abrir conversa nova (botão + e 'Chamar no WhatsApp') o número é checado em Evolution `chat/whatsappNumbers/{instancia}`; sem WhatsApp = erro. Se a Evolution falhar, segue sem validar.
+- Fotos de perfil: `chat/fetchProfilePictureUrl/{instancia}` (cache 12h em WhatsAppConversations.PictureUrl; do vendedor em Sellers.WaPictureUrl).
+- Mensagens prontas (WhatsAppTemplates): cada vendedor cadastra as suas; admin cadastra para todos. Variáveis {{NOME}} e {{VENDEDOR}}.
+- Admin (whatsapp.all) pode apagar conversas. Primeira mensagem enviada a lead 'Novo' muda para 'Contato'.
+- Push/som: wa-notify.js consulta /WhatsApp/Poll a cada 6s (Notification API + beep); permissão pedida no 1º clique.
+
+
+## SDR automático e Treinamento da IA
+- **Treinamento (/Training):** a IA faz perguntas sobre produto/empresa; as respostas viram a base (AiKnowledge) que o SDR usa. Perguntas sem resposta viram lacunas pendentes e acionam repasse ao vendedor.
+- **SDR (/Sdr):** campanhas com número da empresa ou de um vendedor, limite diário, horário comercial (sem domingos), intervalos aleatórios, validação de WhatsApp, opt-out (pare/sair), follow-ups, qualificação por IA e repasse por região/rodízio com alerta. Campanhas nascem pausadas. Executa no SchedulerWorker.

@@ -32,8 +32,15 @@ public class AppDbContext : DbContext
     public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
     public DbSet<WhatsAppConversation> WhatsAppConversations => Set<WhatsAppConversation>();
     public DbSet<WhatsAppMessage> WhatsAppMessages => Set<WhatsAppMessage>();
+    public DbSet<WhatsAppTemplate> WhatsAppTemplates => Set<WhatsAppTemplate>();
     public DbSet<AiAction> AiActions => Set<AiAction>();
     public DbSet<AiMessage> AiMessages => Set<AiMessage>();
+    public DbSet<PersonalTask> PersonalTasks => Set<PersonalTask>();
+    public DbSet<PersonalNote> PersonalNotes => Set<PersonalNote>();
+    public DbSet<PersonalExpense> PersonalExpenses => Set<PersonalExpense>();
+    public DbSet<SdrCampaign> SdrCampaigns => Set<SdrCampaign>();
+    public DbSet<SdrContact> SdrContacts => Set<SdrContact>();
+    public DbSet<AiKnowledge> AiKnowledge => Set<AiKnowledge>();
     public DbSet<AutomationJob> AutomationJobs => Set<AutomationJob>();
     public DbSet<AutomationExecution> AutomationExecutions => Set<AutomationExecution>();
     public DbSet<AutomationLog> AutomationLogs => Set<AutomationLog>();
@@ -171,6 +178,15 @@ public class AppDbContext : DbContext
         });
         b.Entity<AiAction>(e => { e.HasIndex(x => x.CreatedAt); e.HasIndex(x => new { x.Phone, x.Status }); });
         b.Entity<AiMessage>().HasIndex(x => new { x.UserId, x.Channel, x.CreatedAt });
+        b.Entity<PersonalTask>().HasIndex(x => new { x.UserId, x.Done });
+        b.Entity<PersonalTask>().HasIndex(x => x.RemindAt);
+        b.Entity<PersonalNote>().HasIndex(x => x.UserId);
+        b.Entity<PersonalExpense>().HasIndex(x => new { x.UserId, x.Date });
+        b.Entity<PersonalExpense>().Property(x => x.Amount).HasPrecision(14, 2);
+        b.Entity<SdrContact>().HasIndex(x => new { x.CampaignId, x.LeadId }).IsUnique();
+        b.Entity<SdrContact>().HasIndex(x => x.PhoneKey);
+        b.Entity<SdrContact>().HasIndex(x => new { x.CampaignId, x.Stage, x.NextActionAt });
+        b.Entity<AiKnowledge>().HasIndex(x => x.Status);
 
         b.Entity<AutomationJob>(e => { e.HasIndex(x => new { x.IsEnabled, x.NextRunAt }); });
         b.Entity<AutomationExecution>(e =>

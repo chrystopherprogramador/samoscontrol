@@ -19,6 +19,9 @@ public interface IEvolutionInstances
     Task DeleteAsync(string instance, CancellationToken ct = default);
     Task<string?> SendTextAsync(string instance, string phone, string text, CancellationToken ct = default);
     Task<string?> SendMediaAsync(string instance, string phone, byte[] content, string fileName, string mimeType, string? caption, CancellationToken ct = default);
+    /// <summary>Returns (exists, canonical number from the jid) via chat/whatsappNumbers.</summary>
+    Task<(bool Exists, string? Number)> CheckNumberAsync(string instance, string phone, CancellationToken ct = default);
+    Task<string?> GetProfilePictureAsync(string instance, string phone, CancellationToken ct = default);
 }
 
 public class EvolutionInstances : IEvolutionInstances
@@ -144,6 +147,26 @@ public class EvolutionInstances : IEvolutionInstances
         {
             number = Require(phone), mediatype = kind, mimetype = mimeType, caption, fileName, media = Convert.ToBase64String(content)
         }, ct);
+    }
+
+    public async Task<(bool Exists, string? Number)> CheckNumberAsync(string instance, string phone, CancellationToken ct = default)
+    {
+        var (ok, status, text) = await Send(Client(), HttpMethod.Post, $"chat/whatsappNumbers/{E(instance)}", new { numbers = new[] { Require(phone) } }, ct);
+        if (!ok) throw new IntegrationException($"Evolution API {status}: {Trim(text)}");
+        var node = TryParse(text);
+        var first = node is JsonArray arr ? arr.FirstOrDefault() : node;
+        var exists = first?["exists"]?.GetValue<bool>() ?? false;
+        var jid = Json.Str(first?["jid"]) ?? Json.Str(first?["number"]);
+        var digits = jid is null ? null : new string(jid.Split('@')[0].Where(char.IsDigit).ToArray());
+        return (exists, string.IsNullOrEmpty(digits) ? null : digits);
+    }
+
+    public async Task<string?> GetProfilePictureAsync(string instance, string phone, CancellationToken ct = default)
+    {
+        var (ok, _, text) = await Send(Client(), HttpMethod.Post, $"chat/fetchProfilePictureUrl/{E(instance)}", new { number = Require(phone) }, ct);
+        if (!ok) return null;
+        var url = Json.Str(TryParse(text)?["profilePictureUrl"]);
+        return string.IsNullOrWhiteSpace(url) ? null : url;
     }
 
     private async Task<string?> SendMessage(string path, object body, CancellationToken ct)

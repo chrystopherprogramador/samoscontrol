@@ -1,0 +1,54 @@
+@{ ViewData["Title"] = "Mapa de leads"; }
+<link rel="stylesheet" href="~/css/map.css" asp-append-version="true" />
+
+<div class="map-page">
+    <div class="map-stage card">
+        <div class="map-toolbar">
+            <div class="btn-group btn-group-sm" id="mapMetric" role="group">
+                <button type="button" class="btn btn-outline-primary active" data-m="score">Oportunidade</button>
+                <button type="button" class="btn btn-outline-primary" data-m="total">Leads</button>
+                <button type="button" class="btn btn-outline-primary" data-m="novos">Novos</button>
+                <button type="button" class="btn btn-outline-primary" data-m="ganhos">Ganhos</button>
+            </div>
+            <div class="form-check form-switch ms-3 mb-0"><input class="form-check-input" type="checkbox" id="mapCities" checked /><label class="form-check-label small" for="mapCities">Cidades</label></div>
+            <button class="btn btn-sm btn-outline-secondary ms-auto" id="mapReset" type="button"><i class="bi bi-arrows-fullscreen"></i> Brasil</button>
+        </div>
+        <div class="map-canvas" id="mapCanvas"><div class="map-loading">Carregando mapa...</div></div>
+        <div class="map-legend"><span>menos</span><i></i><span>mais</span></div>
+        <div class="map-tip d-none" id="mapTip"></div>
+    </div>
+
+    <div class="map-side">
+        <div class="row g-2">
+            <div class="col-4"><div class="card map-kpi"><div class="kpi-label">Leads no mapa</div><div class="kpi" id="kpiTotal">–</div></div></div>
+            <div class="col-4"><div class="card map-kpi"><div class="kpi-label">Estados</div><div class="kpi" id="kpiStates">–</div></div></div>
+            <div class="col-4"><div class="card map-kpi"><div class="kpi-label">Sem local</div><div class="kpi" id="kpiUnloc">–</div></div></div>
+        </div>
+
+        <div class="card" id="mapDetail">
+            <div class="card-body">
+                <div class="small text-muted" id="detailHint">Clique em um estado para ver detalhes.</div>
+                <div id="detailBody" class="d-none"></div>
+            </div>
+        </div>
+
+        <div class="card map-ai">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2">
+                    <h6 class="mb-0"><i class="bi bi-stars"></i> Onde atacar agora</h6>
+                    <button class="btn btn-sm btn-primary ms-auto" id="aiRun" type="button"><i class="bi bi-lightning-charge"></i> Gerar estratégia</button>
+                </div>
+                <div id="aiOut" class="small text-muted">A IA analisa a distribuição dos seus leads e sugere ações comerciais por região.</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h6 class="mb-2"><i class="bi bi-trophy"></i> Ranking de oportunidade</h6>
+                <div id="rank"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts { <script src="~/js/map.js" asp-append-version="true"></script> }

@@ -1,0 +1,34 @@
+@model List<SdrCampaign>
+@{
+    ViewData["Title"] = "SDR automático";
+    var stats = (Dictionary<int, SdrStats>)ViewBag.Stats;
+    var sellers = (Dictionary<int, string>)ViewBag.Sellers;
+    int N(SdrStats s, SdrStage st) => s.ByStage.TryGetValue(st, out var v) ? v : 0;
+}
+<div class="d-flex gap-2 mb-3 align-items-center">
+    <div class="flex-grow-1 text-muted small">O SDR faz o primeiro contato, responde com a base de conhecimento, qualifica e chama o vendedor quando o lead esquenta.</div>
+    <a class="btn btn-outline-secondary" asp-controller="Training" asp-action="Index"><i class="bi bi-mortarboard"></i> Treinar a IA</a>
+    <a class="btn btn-primary" asp-action="Edit"><i class="bi bi-plus-lg"></i> Nova campanha</a>
+</div>
+<div class="row g-3">
+@foreach (var c in Model)
+{
+    var s = stats[c.Id];
+    var contacted = s.Variants.Sum(v => v.Sent); var replied = s.Variants.Sum(v => v.Replied);
+    <div class="col-lg-6"><div class="card h-100"><div class="card-body">
+        <div class="d-flex align-items-center mb-2">
+            <h6 class="mb-0"><a asp-action="Details" asp-route-id="@c.Id" class="text-decoration-none">@c.Name</a></h6>
+            <span class="badge ms-2 @(c.IsActive ? "bg-success" : "bg-secondary")">@(c.IsActive ? "Ativo" : "Pausado")</span>
+            <span class="ms-auto small text-muted">@(c.SellerId.HasValue && sellers.TryGetValue(c.SellerId.Value, out var sn) ? sn : "Número da empresa")</span>
+        </div>
+        <div class="row text-center g-2">
+            <div class="col"><div class="kpi-label">Na fila</div><div class="fw-bold fs-5">@N(s, SdrStage.Fila)</div></div>
+            <div class="col"><div class="kpi-label">Contatados</div><div class="fw-bold fs-5">@contacted</div></div>
+            <div class="col"><div class="kpi-label">Responderam</div><div class="fw-bold fs-5">@replied</div></div>
+            <div class="col"><div class="kpi-label">Repassados</div><div class="fw-bold fs-5">@N(s, SdrStage.Repassado)</div></div>
+            <div class="col"><div class="kpi-label">Hoje</div><div class="fw-bold fs-5">@s.SentToday/@c.DailyLimit</div></div>
+        </div>
+    </div></div></div>
+}
+@if (Model.Count == 0) { <div class="col-12"><div class="card"><div class="card-body text-center text-muted py-5">Nenhuma campanha. Crie a primeira e comece com poucos envios por dia.</div></div></div> }
+</div>

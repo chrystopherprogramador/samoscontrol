@@ -83,6 +83,54 @@ namespace SamosControl.Infrastructure.Migrations
                     b.ToTable("AiActions");
                 });
 
+            modelBuilder.Entity("SamosControl.Domain.AiKnowledge", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Answer")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("LeadId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("AiKnowledge");
+                });
+
             modelBuilder.Entity("SamosControl.Domain.AiMessage", b =>
                 {
                     b.Property<int>("Id")
@@ -1453,6 +1501,143 @@ namespace SamosControl.Infrastructure.Migrations
                     b.ToTable("NotificationReads");
                 });
 
+            modelBuilder.Entity("SamosControl.Domain.PersonalExpense", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<bool>("IsIncome")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Date");
+
+                    b.ToTable("PersonalExpenses");
+                });
+
+            modelBuilder.Entity("SamosControl.Domain.PersonalNote", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Tag")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PersonalNotes");
+                });
+
+            modelBuilder.Entity("SamosControl.Domain.PersonalTask", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Done")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("DoneAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("RemindAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("RepeatMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RemindAt");
+
+                    b.HasIndex("UserId", "Done");
+
+                    b.ToTable("PersonalTasks");
+                });
+
             modelBuilder.Entity("SamosControl.Domain.Role", b =>
                 {
                     b.Property<int>("Id")
@@ -1549,6 +1734,178 @@ namespace SamosControl.Infrastructure.Migrations
                     b.ToTable("ScraperSearches");
                 });
 
+            modelBuilder.Entity("SamosControl.Domain.SdrCampaign", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("AiReplies")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DailyLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("EndHour")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FilterSegment")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("FilterState")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("FilterStatus")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int>("FollowUpHours")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FollowUpText")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int>("HandoffAlertMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("MaxDelaySec")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MaxFollowUps")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MinDelaySec")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTime?>("NextSendAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Pitch")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int?>("SellerId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("StartHour")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Variants")
+                        .IsRequired()
+                        .HasMaxLength(6000)
+                        .HasColumnType("character varying(6000)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SdrCampaigns");
+                });
+
+            modelBuilder.Entity("SamosControl.Domain.SdrContact", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AiTurns")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Alerted")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CampaignId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<DateTime?>("HandoffAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("HandoffSellerId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LastSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LeadId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("NextActionAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("PhoneKey")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("RepliedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(1500)
+                        .HasColumnType("character varying(1500)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Variant")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeadId");
+
+                    b.HasIndex("PhoneKey");
+
+                    b.HasIndex("CampaignId", "LeadId")
+                        .IsUnique();
+
+                    b.HasIndex("CampaignId", "Stage", "NextActionAt");
+
+                    b.ToTable("SdrContacts");
+                });
+
             modelBuilder.Entity("SamosControl.Domain.Seller", b =>
                 {
                     b.Property<int>("Id")
@@ -1610,6 +1967,10 @@ namespace SamosControl.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("Regions")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1626,6 +1987,10 @@ namespace SamosControl.Infrastructure.Migrations
                     b.Property<string>("WaNumber")
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
+
+                    b.Property<string>("WaPictureUrl")
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)");
 
                     b.Property<string>("WaProfileName")
                         .HasMaxLength(200)
@@ -1906,6 +2271,13 @@ namespace SamosControl.Infrastructure.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
 
+                    b.Property<DateTime?>("PictureCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PictureUrl")
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)");
+
                     b.Property<int?>("SellerId")
                         .HasColumnType("integer");
 
@@ -1987,6 +2359,38 @@ namespace SamosControl.Infrastructure.Migrations
                     b.HasIndex("ConversationId", "Timestamp");
 
                     b.ToTable("WhatsAppMessages");
+                });
+
+            modelBuilder.Entity("SamosControl.Domain.WhatsAppTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int?>("SellerId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("WhatsAppTemplates");
                 });
 
             modelBuilder.Entity("SamosControl.Domain.AutomationExecution", b =>
@@ -2169,6 +2573,25 @@ namespace SamosControl.Infrastructure.Migrations
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("SamosControl.Domain.SdrContact", b =>
+                {
+                    b.HasOne("SamosControl.Domain.SdrCampaign", "Campaign")
+                        .WithMany()
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SamosControl.Domain.Lead", "Lead")
+                        .WithMany()
+                        .HasForeignKey("LeadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Campaign");
+
+                    b.Navigation("Lead");
                 });
 
             modelBuilder.Entity("SamosControl.Domain.Seller", b =>

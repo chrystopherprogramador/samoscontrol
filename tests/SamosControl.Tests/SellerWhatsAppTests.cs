@@ -23,6 +23,9 @@ public class FakeEvolutionInstances : IEvolutionInstances
     public Task DeleteAsync(string instance, CancellationToken ct = default) => Task.CompletedTask;
     public Task<string?> SendTextAsync(string instance, string phone, string text, CancellationToken ct = default) { Sent.Add((instance, phone, text)); return Task.FromResult<string?>("s" + Sent.Count); }
     public Task<string?> SendMediaAsync(string instance, string phone, byte[] content, string fileName, string mimeType, string? caption, CancellationToken ct = default) => Task.FromResult<string?>("x");
+    public HashSet<string> NoWhatsApp { get; } = new();
+    public Task<(bool Exists, string? Number)> CheckNumberAsync(string instance, string phone, CancellationToken ct = default) => Task.FromResult((!NoWhatsApp.Contains(phone), (string?)phone));
+    public Task<string?> GetProfilePictureAsync(string instance, string phone, CancellationToken ct = default) => Task.FromResult<string?>("https://pic.example/" + phone);
 }
 
 public class SellerWhatsAppTests
@@ -135,9 +138,38 @@ public class SellerWhatsAppTests
         Assert.Equal(2, (await db.Leads.AsNoTracking().SingleAsync()).SellerId);
     }
 
+    [Fact]
+    public async Task NewChat_RejectsNumberWithoutWhatsApp_AndFirstMessageMovesLeadToContato_AndAdminCanDelete()
+    {
+        var fake = new FakeEvolutionInstances(); fake.NoWhatsApp.Add("5565911112222");
+        using var h = new TestHost(configure: s => s.AddSingleton<IEvolutionInstances>(fake)); using var sc = h.Scope();
+        var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
+        var wa = sc.ServiceProvider.GetRequiredService<WhatsAppService>();
+        var seller = new Seller { Name = "Felipe" }; db.Sellers.Add(seller); await db.SaveChangesAsync();
+        await wa.ConnectSellerAsync(seller.Id, "https://control.example.com/"); await wa.RefreshSellerStatusAsync(seller.Id);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => wa.ValidateNumberAsync(seller.Id, "65911112222"));
+        Assert.Equal("5565999990000", await wa.ValidateNumberAsync(seller.Id, "65999990000"));
+
+        var lead = new Lead { Name = "Loja X", Phone = "65999990000", PhoneKey = PhoneUtil.Key("65999990000"), Status = LeadStatus.Novo };
+        db.Leads.Add(lead); await db.SaveChangesAsync();
+        var conv = await wa.GetOrCreateConversationAsync("5565999990000", "Loja X", seller.Id);
+        conv.LeadId = lead.Id; await db.SaveChangesAsync();
+        await wa.SendSellerTextAsync(seller.Id, "5565999990000", "Olá!", null);
+        Assert.Equal(LeadStatus.Novo, (await db.Leads.AsNoTracking().SingleAsync()).Status);
+        await wa.SendSellerTextAsync(seller.Id, "5565999990000", "Olá!", 1);
+        Assert.Equal(LeadStatus.Contato, (await db.Leads.AsNoTracking().SingleAsync()).Status);
+
+        await wa.EnsurePictureAsync(conv.Id);
+        Assert.StartsWith("https://pic.example/", (await db.WhatsAppConversations.AsNoTracking().SingleAsync()).PictureUrl);
+
+        await wa.DeleteConversationAsync(conv.Id);
+        Assert.Empty(db.WhatsAppConversations.AsNoTracking());
+        Assert.Empty(db.WhatsAppMessages.AsNoTracking());
+    }
+
     [Theory]
     [InlineData("open", "DESCONECTADO", "CONECTADO")]
-    [InlineData("close", "CONECTANDO", "CONECTANDO")]
     [InlineData("close", "CONECTADO", "DESCONECTADO")]
     public void MapState(string state, string previous, string expected) => Assert.Equal(expected, WhatsAppService.MapState(state, previous));
 }

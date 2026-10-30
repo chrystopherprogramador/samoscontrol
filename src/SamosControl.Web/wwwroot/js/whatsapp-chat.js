@@ -15,13 +15,20 @@
     return '<i class="bi bi-check2"></i>';
   }
 
+  function av(pic, ini) { return '<span class="wa-av">' + (pic ? '<img src="' + esc(pic) + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '<b>' + esc(ini) + '</b></span>'; }
+  function post(url, body) {
+    return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf }, body: body ? JSON.stringify(body) : undefined })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Erro'); return j; }); });
+  }
+  var curConv = null;
+
   function loadList() {
     var q = search.value.trim();
     return getJson('/WhatsApp/List?scope=' + encodeURIComponent(scope) + '&q=' + encodeURIComponent(q)).then(function (rows) {
       if (!rows.length) { convsEl.innerHTML = '<div class="p-3 text-muted small">Nenhuma conversa.</div>'; return; }
       convsEl.innerHTML = rows.map(function (c) {
         return '<div class="wa-conv' + (c.id === current ? ' active' : '') + '" data-id="' + c.id + '">' +
-          '<span class="wa-av">' + esc(c.initial) + '</span>' +
+          av(c.pic, c.initial) +
           '<div class="wa-conv-body"><div class="d-flex justify-content-between"><span class="fw-semibold text-truncate">' + esc(c.name) + '</span><small class="text-muted ms-2">' + esc(c.time) + '</small></div>' +
           '<div class="d-flex justify-content-between"><small class="text-muted text-truncate">' + esc(c.preview || c.phone) + '</small>' +
           (c.unread > 0 ? '<span class="badge bg-success rounded-pill ms-2">' + c.unread + '</span>' : '') + '</div>' +
@@ -48,7 +55,16 @@
     return getJson('/WhatsApp/Messages?id=' + id + '&after=' + lastId).then(function (d) {
       if (id !== current) return;
       var c = d.conversation;
-      $('waHeadAv').textContent = (c.name || '#').charAt(0).toUpperCase();
+      curConv = c;
+      $('waHeadAv').innerHTML = av(c.pic, (c.name || '#').charAt(0).toUpperCase()).replace(/^<span[^>]*>|<\/span>$/g, '');
+      var hs = $('waHeadStatus');
+      if (c.leadStatus && c.canEditLead) {
+        if (hs.dataset.conv !== String(c.id) || hs.options.length === 0) { hs.innerHTML = c.statuses.map(function (s) { return '<option>' + s + '</option>'; }).join(''); hs.dataset.conv = c.id; }
+        if (document.activeElement !== hs) hs.value = c.leadStatus;
+        hs.classList.remove('d-none');
+      } else hs.classList.add('d-none');
+      var li = $('waLeadInfo'); li.textContent = c.leadInfo || ''; li.classList.toggle('d-none', !c.leadInfo);
+      $('waDelete').classList.toggle('d-none', !c.canDelete);
       $('waHeadName').textContent = c.name;
       $('waHeadSub').textContent = '+' + c.phone + (c.seller ? ' · WhatsApp de ' + c.seller : '');
       var links = '';
@@ -101,6 +117,60 @@
         .then(function () { ta.value = ''; autosize(); return loadMessages(true); })
         .catch(function (err) { alert(err.message); })
         .then(function () { btn.disabled = false; $('waFile').value = ''; loadList(); });
+    });
+  }
+
+  $('waHeadStatus').addEventListener('change', function () { var s = this.value; post('/WhatsApp/SetLeadStatus?id=' + current + '&status=' + encodeURIComponent(s)).catch(function (e) { alert(e.message); }); });
+  $('waDelete').addEventListener('click', function () {
+    if (!current || !confirm('Apagar esta conversa e todas as mensagens? Isso não pode ser desfeito.')) return;
+    post('/WhatsApp/DeleteConversation?id=' + current).then(function () { current = 0; msgsEl.innerHTML = ''; $('waChat').classList.add('d-none'); $('waEmpty').classList.remove('d-none'); wa.classList.remove('chat-open'); history.replaceState(null, '', '?scope=' + encodeURIComponent(scope)); loadList(); }).catch(function (e) { alert(e.message); });
+  });
+  var snd = $('waSound');
+  function paintSound() { var on = !window.waNotify || window.waNotify.soundOn(); snd.innerHTML = '<i class="bi ' + (on ? 'bi-bell' : 'bi-bell-slash') + '"></i>'; }
+  snd.addEventListener('click', function () { if (!window.waNotify) return; window.waNotify.setSound(!window.waNotify.soundOn()); paintSound(); if (window.waNotify.soundOn()) window.waNotify.beep(); window.waNotify.askPermission(); });
+  paintSound();
+
+  var emo = $('waEmojis'), tpl = $('waTpls');
+  if (emo) {
+    emo.innerHTML = '😀 😁 😂 🤣 😊 😍 😘 😎 🤗 🤔 😅 😉 🙂 🙏 👍 👏 🙌 💪 🔥 ✨ 🎉 ❤️ 💙 ✅ 📞 📅 💰 📍 🚀 😢 😮 👋'.split(' ').map(function (e) { return '<button type="button">' + e + '</button>'; }).join('');
+    emo.addEventListener('click', function (e) { if (e.target.tagName === 'BUTTON') { var t = $('waText'); t.setRangeText(e.target.textContent, t.selectionStart, t.selectionEnd, 'end'); t.focus(); } });
+    $('waEmoji').addEventListener('click', function () { tpl.classList.add('d-none'); emo.classList.toggle('d-none'); });
+    $('waTpl').addEventListener('click', function () { emo.classList.add('d-none'); if (tpl.classList.contains('d-none')) { tpl.classList.remove('d-none'); loadTpls(); } else tpl.classList.add('d-none'); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { emo.classList.add('d-none'); tpl.classList.add('d-none'); } });
+  }
+
+  function fill(body) {
+    var c = curConv || {}, first = (c.name || '').split(' ')[0];
+    return body.replace(/\{\{\s*NOME\s*\}\}/gi, first).replace(/\{\{\s*VENDEDOR\s*\}\}/gi, c.seller || '');
+  }
+  function loadTpls(edit) {
+    getJson('/WhatsApp/Templates?conv=' + current).then(function (rows) {
+      var h = '<div class="d-flex justify-content-between align-items-center mb-1"><strong class="small">Mensagens prontas</strong><span class="small text-muted">Use {{NOME}} e {{VENDEDOR}}</span></div>';
+      h += rows.map(function (t) {
+        return '<div class="tpl" data-id="' + t.id + '"><span class="tpl-act">' + (t.editable ? '<a href="#" data-act="edit">editar</a> · <a href="#" class="text-danger" data-act="del">apagar</a>' : '') + '</span><strong>' + esc(t.name) + (t.shared ? ' <span class="badge bg-secondary">todos</span>' : '') + '</strong><small>' + esc(t.body) + '</small></div>';
+      }).join('') || '<div class="text-muted small p-2">Nenhuma ainda.</div>';
+      var ed = edit || { id: 0, name: '', body: '' };
+      h += '<form id="tplForm" class="mt-2 border-top pt-2"><input class="form-control form-control-sm" id="tplName" placeholder="Nome (ex.: Apresentação)" maxlength="80" value="' + esc(ed.name) + '"><textarea class="form-control form-control-sm" id="tplBody" rows="3" maxlength="2000" placeholder="Texto da mensagem">' + esc(ed.body) + '</textarea>' +
+        '<div class="d-flex gap-2 align-items-center">' + (wa.dataset.all === 'true' ? '<label class="small me-auto"><input type="checkbox" id="tplShared"' + (ed.shared ? ' checked' : '') + '> Para todos</label>' : '<span class="me-auto"></span>') + '<button class="btn btn-sm btn-success">' + (ed.id ? 'Salvar' : 'Cadastrar') + '</button></div></form>';
+      tpl.innerHTML = h; tpl._rows = rows; tpl._edit = ed;
+    }).catch(function () { });
+  }
+  if (tpl) {
+    tpl.addEventListener('click', function (e) {
+      var row = e.target.closest('.tpl'); if (!row) return;
+      var id = parseInt(row.dataset.id, 10), t = tpl._rows.filter(function (x) { return x.id === id; })[0], act = e.target.dataset.act;
+      if (act) {
+        e.preventDefault();
+        if (act === 'edit') loadTpls(t);
+        else if (confirm('Apagar “' + t.name + '”?')) post('/WhatsApp/TemplateDelete?id=' + id).then(function () { loadTpls(); }).catch(function (x) { alert(x.message); });
+        return;
+      }
+      var ta = $('waText'); ta.value = fill(t.body); ta.dispatchEvent(new Event('input')); tpl.classList.add('d-none'); ta.focus();
+    });
+    tpl.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var sh = $('tplShared');
+      post('/WhatsApp/TemplateSave', { id: tpl._edit.id, conv: current, name: $('tplName').value, body: $('tplBody').value, shared: !!(sh && sh.checked) }).then(function () { loadTpls(); }).catch(function (x) { alert(x.message); });
     });
   }
 
