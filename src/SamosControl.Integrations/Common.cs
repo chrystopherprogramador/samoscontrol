@@ -61,6 +61,16 @@ public static class SettingKeys
     public const string OllamaModel = "OLLAMA_MODEL";
     public const string OllamaApiKey = "OLLAMA_API_KEY";
     public const string OllamaFallbackModel = "OLLAMA_FALLBACK_MODEL";
+    // Voz (ElevenLabs): IA fala e entende áudios
+    public const string ElevenLabsKey = "ELEVENLABS_API_KEY";
+    public const string ElevenLabsVoiceId = "ELEVENLABS_VOICE_ID";
+    public const string ElevenLabsModel = "ELEVENLABS_MODEL";
+    public const string ElevenLabsSttModel = "ELEVENLABS_STT_MODEL";
+    public const string ElevenLabsSttLanguage = "ELEVENLABS_STT_LANGUAGE";
+    public const string ElevenLabsStability = "ELEVENLABS_STABILITY";
+    public const string ElevenLabsSimilarity = "ELEVENLABS_SIMILARITY";
+    public const string ElevenLabsVoiceReplies = "ELEVENLABS_VOICE_REPLIES";
+    public const string ElevenLabsUrl = "ELEVENLABS_API_URL";
     // Monitoramento
     public const string AlertNumbers = "MONITORING_ALERT_NUMBERS";
     public const string AlertCooldownMinutes = "MONITORING_ALERT_COOLDOWN_MINUTES";
@@ -75,7 +85,7 @@ public static class SettingKeys
 
     public static readonly HashSet<string> Secrets = new()
     {
-        GoogleApiKey, GoogleBasicPassword, AsaasKey, AsaasWebhookToken, EfiClientSecret, EfiCertBase64, EfiCertPassword, EvolutionKey, EvolutionWebhookToken, SmtpPassword, OllamaApiKey
+        GoogleApiKey, GoogleBasicPassword, AsaasKey, AsaasWebhookToken, EfiClientSecret, EfiCertBase64, EfiCertPassword, EvolutionKey, EvolutionWebhookToken, SmtpPassword, OllamaApiKey, ElevenLabsKey
     };
 }
 

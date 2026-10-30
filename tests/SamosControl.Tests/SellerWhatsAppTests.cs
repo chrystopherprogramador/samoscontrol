@@ -23,6 +23,10 @@ public class FakeEvolutionInstances : IEvolutionInstances
     public Task DeleteAsync(string instance, CancellationToken ct = default) => Task.CompletedTask;
     public Task<string?> SendTextAsync(string instance, string phone, string text, CancellationToken ct = default) { Sent.Add((instance, phone, text)); return Task.FromResult<string?>("s" + Sent.Count); }
     public Task<string?> SendMediaAsync(string instance, string phone, byte[] content, string fileName, string mimeType, string? caption, CancellationToken ct = default) => Task.FromResult<string?>("x");
+    public List<(string Instance, string Phone, int Bytes)> Audios { get; } = new();
+    public (byte[], string?)? Media { get; set; }
+    public Task<(byte[] Content, string? MimeType)?> GetMediaAsync(string instance, string messageId, CancellationToken ct = default) => Task.FromResult<(byte[], string?)?>(Media);
+    public Task<string?> SendAudioAsync(string instance, string phone, byte[] audio, CancellationToken ct = default) { Audios.Add((instance, phone, audio.Length)); return Task.FromResult<string?>("a" + Audios.Count); }
     public HashSet<string> NoWhatsApp { get; } = new();
     public Task<(bool Exists, string? Number)> CheckNumberAsync(string instance, string phone, CancellationToken ct = default) => Task.FromResult((!NoWhatsApp.Contains(phone), (string?)phone));
     public Task<string?> GetProfilePictureAsync(string instance, string phone, CancellationToken ct = default) => Task.FromResult<string?>("https://pic.example/" + phone);

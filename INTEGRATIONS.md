@@ -83,3 +83,11 @@ Cada vendedor pode ter o próprio número. Em **Vendedores → Conectar / gerenc
 ## SDR automático e Treinamento da IA
 - **Treinamento (/Training):** a IA faz perguntas sobre produto/empresa; as respostas viram a base (AiKnowledge) que o SDR usa. Perguntas sem resposta viram lacunas pendentes e acionam repasse ao vendedor.
 - **SDR (/Sdr):** campanhas com número da empresa ou de um vendedor, limite diário, horário comercial (sem domingos), intervalos aleatórios, validação de WhatsApp, opt-out (pare/sair), follow-ups, qualificação por IA e repasse por região/rodízio com alerta. Campanhas nascem pausadas. Executa no SchedulerWorker.
+
+## ElevenLabs (voz da IA)
+
+Configurações > Voz (ElevenLabs): `ELEVENLABS_API_KEY` (secreta), `ELEVENLABS_VOICE_ID`, e opcionais `ELEVENLABS_MODEL` (padrão eleven_multilingual_v2), `ELEVENLABS_STT_MODEL` (padrão scribe_v2), `ELEVENLABS_VOICE_REPLIES`.
+
+- Áudio recebido: baixado da Evolution (`chat/getBase64FromMediaMessage`), transcrito (`POST /v1/speech-to-text`) e tratado pela IA/SDR como texto; a transcrição aparece na conversa como `🎤 ...`.
+- Resposta: quando o cliente manda áudio, a IA responde com nota de voz (`POST /v1/text-to-speech/{voice_id}` + Evolution `message/sendWhatsAppAudio`). Se falhar, envia texto.
+- Sem chave configurada nada muda (áudios ficam como `[audioMessage]`).

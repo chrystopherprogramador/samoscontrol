@@ -42,6 +42,7 @@ public static class DependencyInjection
         s.AddMemoryCache();
         s.AddHttpClient();
         s.AddHttpClient("monitor");
+        s.AddHttpClient("elevenlabs");
         s.TryAddScoped<ICurrentUser, SystemUser>();
         s.TryAddSingleton<INotificationPublisher, NullNotificationPublisher>();
 
@@ -55,6 +56,7 @@ public static class DependencyInjection
         s.AddSingleton<IEfiIntegration, EfiIntegration>();
         s.AddSingleton<IEvolutionApiIntegration, EvolutionApiIntegration>();
         s.AddSingleton<IEvolutionInstances, EvolutionInstances>();
+        s.AddSingleton<IElevenLabs, ElevenLabsIntegration>();
         s.AddSingleton<IAiProvider, OllamaProvider>();
 
         s.AddScoped<AuditService>();

@@ -250,6 +250,17 @@ public static class SettingCatalog
             new(SettingKeys.OllamaFallbackModel, "Modelo de contingência (padrão: gpt-oss:20b)", false, "Usado automaticamente se o principal falhar ou atingir limite. Muito barato (US$ 0,07/1M tokens de entrada)."),
             new(SettingKeys.OllamaUrl, "URL (padrão: https://ollama.com)", false, "Deixe vazio para o Ollama Cloud. Para servidor próprio: http://ollama:11434")
         }),
+        new("voz", "Voz (ElevenLabs)", "bi-mic", new SettingField[]
+        {
+            new(SettingKeys.ElevenLabsKey, "API key da ElevenLabs", true, "Crie em elevenlabs.io > Developers > API Keys. Habilite as permissões Text to Speech e Speech to Text."),
+            new(SettingKeys.ElevenLabsVoiceId, "ID da voz", false, "Voice ID da voz escolhida (My Voices > ID). A IA responde com essa voz."),
+            new(SettingKeys.ElevenLabsVoiceReplies, "Responder em áudio (true/false)", false, "Padrão true: quando o cliente manda áudio, a IA responde em áudio (com texto de contingência se falhar)."),
+            new(SettingKeys.ElevenLabsModel, "Modelo de voz (padrão: eleven_multilingual_v2)", false, "Alternativa mais rápida: eleven_flash_v2_5."),
+            new(SettingKeys.ElevenLabsSttModel, "Modelo de transcrição (padrão: scribe_v2)"),
+            new(SettingKeys.ElevenLabsSttLanguage, "Idioma do áudio recebido (ex.: pt)", false, "Vazio = detectar automaticamente."),
+            new(SettingKeys.ElevenLabsStability, "Estabilidade (0 a 1, padrão 0.5)", false, "Mais alta = voz mais constante; mais baixa = mais expressiva."),
+            new(SettingKeys.ElevenLabsSimilarity, "Similaridade (0 a 1, padrão 0.75)")
+        }),
         new("monitoramento", "Monitoramento", "bi-activity", new SettingField[]
         {
             new(SettingKeys.AlertNumbers, "Números de alerta WhatsApp", false, "Separados por vírgula, com DDI/DDD."), new(SettingKeys.AlertCooldownMinutes, "Cooldown entre lembretes (min)")
@@ -289,6 +300,23 @@ public class SettingsController : AppController
         ViewBag.Status = SettingCatalog.All.ToDictionary(c => c.Id, c => c.Fields.Where(f => !f.Key.StartsWith(SettingKeys.GoogleMapPrefix)).Take(c.Id is "asaas" or "evolution" or "efi" ? 2 : 1).All(f => _settings.Has(f.Key)));
         ViewBag.AppUrl = (HttpContext.RequestServices.GetRequiredService<IConfiguration>()["APP_URL"] ?? $"{Request.Scheme}://{Request.Host}").TrimEnd('/');
         return View();
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> ResyncWebhooks(CancellationToken ct)
+    {
+        var wa = HttpContext.RequestServices.GetRequiredService<WhatsAppService>();
+        var appUrl = (HttpContext.RequestServices.GetRequiredService<IConfiguration>()["APP_URL"] ?? $"{Request.Scheme}://{Request.Host}").TrimEnd('/');
+        try
+        {
+            var r = await wa.ReconfigureAllWebhooksAsync(appUrl, ct);
+            var bad = r.Where(x => x.Error != null).ToList();
+            if (r.Count == 0) FlashFail("Nenhuma instância encontrada.");
+            else if (bad.Count == 0) Flash($"Webhook reconfigurado em {r.Count} número(s).");
+            else FlashFail($"Reconfigurado em {r.Count - bad.Count} de {r.Count}. Falhas: " + string.Join("; ", bad.Select(x => $"{x.Instance}: {x.Error}")));
+        }
+        catch (Exception ex) when (ex is NotConfiguredException or IntegrationException) { FlashFail(ex.Message); }
+        return RedirectToAction(nameof(Index), new { category = "evolution" });
     }
 
     [HttpPost]

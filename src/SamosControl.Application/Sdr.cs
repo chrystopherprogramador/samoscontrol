@@ -288,7 +288,7 @@ public class SdrService
     }
 
     // ---------- Resposta do lead ----------
-    public async Task HandleReplyAsync(int? sellerId, string phone, string text, CancellationToken ct = default)
+    public async Task HandleReplyAsync(int? sellerId, string phone, string text, bool viaAudio = false, CancellationToken ct = default)
     {
         var key = PhoneUtil.Key(phone);
         var contact = await _db.SdrContacts.Include(x => x.Campaign).Include(x => x.Lead)
@@ -301,6 +301,9 @@ public class SdrService
         {
             await _db.Entry(contact).ReloadAsync(ct);
             if (contact.Stage is not (SdrStage.Enviado or SdrStage.Respondeu)) return;
+            var lastDir = await _db.WhatsAppMessages.Where(m => m.Conversation!.SellerId == sellerId && m.Conversation.Phone.EndsWith(key!))
+                .OrderByDescending(m => m.Id).Select(m => (MessageDirection?)m.Direction).FirstOrDefaultAsync(ct);
+            if (contact.Stage == SdrStage.Respondeu && lastDir == MessageDirection.Out) return; // já respondido (webhook duplicado)
             var c = contact.Campaign!; var lead = contact.Lead!;
             contact.RepliedAt ??= DateTime.UtcNow; contact.Stage = SdrStage.Respondeu; contact.NextActionAt = null;
 
@@ -338,7 +341,8 @@ public class SdrService
             contact.AiTurns++;
             await _db.SaveChangesAsync(ct);
             await Task.Delay(Random.Shared.Next(4000, 9000), ct);
-            await SafeSendAsync(c, contact.Phone, turn.Reply, ct);
+            try { await _wa.SendReplyAsync(c.SellerId, contact.Phone, turn.Reply, viaAudio, null, true, ct); }
+            catch (Exception ex) { _log.LogWarning(ex, "SDR: falha ao enviar resposta"); }
         }
         finally { gate.Release(); }
     }

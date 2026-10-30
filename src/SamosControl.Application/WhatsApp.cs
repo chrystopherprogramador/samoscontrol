@@ -16,9 +16,10 @@ public class WhatsAppService
     private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<WhatsAppService> _log;
     private readonly IEvolutionInstances _inst;
+    private readonly IElevenLabs _voice;
 
-    public WhatsAppService(AppDbContext db, IEvolutionApiIntegration evo, IEvolutionInstances inst, SettingsService settings, IServiceScopeFactory scopes, ILogger<WhatsAppService> log)
-    { _db = db; _evo = evo; _inst = inst; _settings = settings; _scopes = scopes; _log = log; }
+    public WhatsAppService(AppDbContext db, IEvolutionApiIntegration evo, IEvolutionInstances inst, IElevenLabs voice, SettingsService settings, IServiceScopeFactory scopes, ILogger<WhatsAppService> log)
+    { _db = db; _evo = evo; _inst = inst; _voice = voice; _settings = settings; _scopes = scopes; _log = log; }
 
     public bool IsConfigured => _evo.IsConfigured;
     public bool ServerConfigured => _inst.ServerConfigured;
@@ -168,9 +169,25 @@ public class WhatsAppService
 
     private async Task Ignore(WebhookEvent e) { e.Status = WebhookStatus.Ignored; await _db.SaveChangesAsync(); }
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> Seen = new();
+
+    private static bool FirstTime(string key)
+    {
+        var cut = DateTime.UtcNow.AddMinutes(-10);
+        foreach (var k in Seen.Where(x => x.Value < cut).Select(x => x.Key).ToList()) Seen.TryRemove(k, out _);
+        return Seen.TryAdd(key, DateTime.UtcNow);
+    }
+
     private async Task StoreIncomingAsync(EvolutionIncoming m, int? sellerId = null)
     {
+        if (!FirstTime($"{sellerId}:{m.ExternalId}")) return; // webhook entregue em duplicidade ao mesmo tempo
         if (await _db.WhatsAppMessages.AnyAsync(x => x.ExternalId == m.ExternalId && x.Conversation!.SellerId == sellerId)) return; // already stored when sent by us
+        var audioIn = false;
+        if (!m.FromMe && string.IsNullOrWhiteSpace(m.Text) && m.Type.Contains("audio", StringComparison.OrdinalIgnoreCase))
+        {
+            var transcript = await TranscribeIncomingAsync(m, sellerId);
+            if (transcript != null) { m = m with { Text = "🎤 " + transcript }; audioIn = true; }
+        }
         var conv = await GetOrCreateConversationAsync(m.Phone, m.FromMe || string.IsNullOrWhiteSpace(m.PushName) ? null : m.PushName, sellerId);
         _db.WhatsAppMessages.Add(new WhatsAppMessage
         {
@@ -201,22 +218,61 @@ public class WhatsAppService
             });
         }
 
-        if (sellerId is null && !m.FromMe && !string.IsNullOrWhiteSpace(m.Text)) _ = Task.Run(() => DispatchToAgentAsync(m.Phone, m.Text!));
-        if (!m.FromMe && !string.IsNullOrWhiteSpace(m.Text)) _ = Task.Run(() => DispatchToSdrAsync(sellerId, m.Phone, m.Text!));
+        var aiText = audioIn ? m.Text![3..].Trim() : m.Text;
+        if (sellerId is null && !m.FromMe && !string.IsNullOrWhiteSpace(aiText)) _ = Task.Run(() => DispatchToAgentAsync(m.Phone, aiText!, audioIn));
+        if (!m.FromMe && !string.IsNullOrWhiteSpace(aiText)) _ = Task.Run(() => DispatchToSdrAsync(sellerId, m.Phone, aiText!, audioIn));
     }
 
-    private async Task DispatchToSdrAsync(int? sellerId, string phone, string text)
+    /// <summary>Baixa o áudio recebido na Evolution e transcreve na ElevenLabs. Retorna null se indisponível.</summary>
+    private async Task<string?> TranscribeIncomingAsync(EvolutionIncoming m, int? sellerId)
+    {
+        if (!_voice.IsConfigured) return null;
+        try
+        {
+            var s = sellerId.HasValue ? await _db.Sellers.FirstOrDefaultAsync(x => x.Id == sellerId) : null;
+            var inst = InstanceFor(s);
+            if (inst == null) return null;
+            var media = await _inst.GetMediaAsync(inst, m.ExternalId);
+            if (media == null) return null;
+            return await _voice.TranscribeAsync(media.Value.Content, "audio.ogg", media.Value.MimeType);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Falha ao transcrever áudio recebido"); return null; }
+    }
+
+    /// <summary>Responde ao cliente; em áudio (voz da ElevenLabs) quando asAudio, com fallback para texto.</summary>
+    public async Task<WhatsAppMessage> SendReplyAsync(int? sellerId, string phone, string text, bool asAudio, int? userId = null, bool fromAgent = false, CancellationToken ct = default)
+    {
+        if (asAudio && _voice.VoiceRepliesEnabled && text.Length <= 1500)
+        {
+            try
+            {
+                var s = sellerId.HasValue ? await LoadSellerAsync(sellerId.Value) : null;
+                var inst = InstanceFor(s);
+                if (inst != null)
+                {
+                    var conv = await GetOrCreateConversationAsync(phone, null, sellerId);
+                    var audio = await _voice.SynthesizeAsync(text, ct);
+                    var extId = await _inst.SendAudioAsync(inst, conv.Phone, audio, ct);
+                    return await StoreOutAsync(conv, extId, text, "audio", userId, fromAgent);
+                }
+            }
+            catch (Exception ex) { _log.LogWarning(ex, "Falha ao responder em áudio; enviando texto"); }
+        }
+        return sellerId.HasValue ? await SendSellerTextAsync(sellerId.Value, phone, text, userId, ct) : await SendTextAsync(phone, text, userId, fromAgent, ct);
+    }
+
+    private async Task DispatchToSdrAsync(int? sellerId, string phone, string text, bool viaAudio = false)
     {
         try
         {
             using var scope = _scopes.CreateScope();
-            await scope.ServiceProvider.GetRequiredService<SdrService>().HandleReplyAsync(sellerId, phone, text);
+            await scope.ServiceProvider.GetRequiredService<SdrService>().HandleReplyAsync(sellerId, phone, text, viaAudio);
         }
         catch (Exception ex) { _log.LogError(ex, "Falha no SDR ao tratar resposta do lead"); }
     }
 
     /// <summary>Only registered, active users (matched by phone) with ai.use  can talk to the agent.</summary>
-    public async Task DispatchToAgentAsync(string phone, string text)
+    public async Task DispatchToAgentAsync(string phone, string text, bool viaAudio = false)
     {
         try
         {
@@ -231,7 +287,7 @@ public class WhatsAppService
             var agent = scope.ServiceProvider.GetRequiredService<SamosAgent>();
             var reply = await agent.HandleAsync(text, new AgentContext(user.Id, user.Name, "WHATSAPP", PhoneUtil.Normalize(phone)));
             var wa = scope.ServiceProvider.GetRequiredService<WhatsAppService>();
-            await wa.SendTextAsync(phone, reply, user.Id, fromAgent: true);
+            await wa.SendReplyAsync(null, phone, reply, viaAudio, user.Id, fromAgent: true);
         }
         catch (Exception ex) { _log.LogError(ex, "Falha ao responder via agente no WhatsApp"); }
     }
@@ -316,6 +372,24 @@ public class WhatsAppService
         var s = await LoadSellerAsync(sellerId);
         if (s.WaInstance is null) throw new InvalidOperationException("Instância ainda não criada.");
         await _inst.SetWebhookAsync(s.WaInstance, appUrl.TrimEnd('/') + "/api/webhooks/evolution", await EnsureWebhookTokenAsync(), ct);
+    }
+
+    /// <summary>Reaplica o webhook na instância da empresa e em todas as instâncias de vendedores.</summary>
+    public async Task<List<(string Instance, string? Error)>> ReconfigureAllWebhooksAsync(string appUrl, CancellationToken ct = default)
+    {
+        var url = appUrl.TrimEnd('/') + "/api/webhooks/evolution";
+        var token = await EnsureWebhookTokenAsync();
+        var names = new List<string>();
+        var company = _settings.Get(SettingKeys.EvolutionInstance);
+        if (!string.IsNullOrWhiteSpace(company)) names.Add(company);
+        names.AddRange(await _db.Sellers.Where(s => s.WaInstance != null).Select(s => s.WaInstance!).ToListAsync(ct));
+        var res = new List<(string, string?)>();
+        foreach (var n in names.Distinct())
+        {
+            try { await _inst.SetWebhookAsync(n, url, token, ct); res.Add((n, null)); }
+            catch (Exception ex) { res.Add((n, ex.Message)); }
+        }
+        return res;
     }
 
     public async Task DisconnectSellerAsync(int sellerId, bool delete, CancellationToken ct = default)

@@ -22,6 +22,10 @@ public interface IEvolutionInstances
     /// <summary>Returns (exists, canonical number from the jid) via chat/whatsappNumbers.</summary>
     Task<(bool Exists, string? Number)> CheckNumberAsync(string instance, string phone, CancellationToken ct = default);
     Task<string?> GetProfilePictureAsync(string instance, string phone, CancellationToken ct = default);
+    /// <summary>Baixa a mídia de uma mensagem recebida (chat/getBase64FromMediaMessage).</summary>
+    Task<(byte[] Content, string? MimeType)?> GetMediaAsync(string instance, string messageId, CancellationToken ct = default);
+    /// <summary>Envia nota de voz (message/sendWhatsAppAudio) com o áudio em base64.</summary>
+    Task<string?> SendAudioAsync(string instance, string phone, byte[] audio, CancellationToken ct = default);
 }
 
 public class EvolutionInstances : IEvolutionInstances
@@ -169,6 +173,21 @@ public class EvolutionInstances : IEvolutionInstances
         return string.IsNullOrWhiteSpace(url) ? null : url;
     }
 
+    public async Task<(byte[] Content, string? MimeType)?> GetMediaAsync(string instance, string messageId, CancellationToken ct = default)
+    {
+        var (ok, status, text) = await Send(Client(), HttpMethod.Post, $"chat/getBase64FromMediaMessage/{E(instance)}", new { message = new { key = new { id = messageId } }, convertToMp4 = false }, ct);
+        if (!ok) throw new IntegrationException($"Evolution API {status}: {Trim(text)}");
+        var n = TryParse(text);
+        var b64 = Json.Str(n?["base64"]);
+        if (string.IsNullOrWhiteSpace(b64)) return null;
+        var comma = b64.IndexOf("base64,", StringComparison.Ordinal);
+        if (comma >= 0) b64 = b64[(comma + 7)..];
+        try { return (Convert.FromBase64String(b64), Json.Str(n?["mimetype"])); }
+        catch (FormatException) { return null; }
+    }
+
+    public Task<string?> SendAudioAsync(string instance, string phone, byte[] audio, CancellationToken ct = default) =>
+        SendMessage($"message/sendWhatsAppAudio/{E(instance)}", new { number = Require(phone), audio = Convert.ToBase64String(audio) }, ct);
     private async Task<string?> SendMessage(string path, object body, CancellationToken ct)
     {
         var (ok, status, text) = await Send(Client(), HttpMethod.Post, path, body, ct);
