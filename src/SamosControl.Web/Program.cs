@@ -34,6 +34,7 @@ builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
 builder.Services.AddSingleton<INotificationPublisher, SignalRNotificationPublisher>();
 builder.Services.AddSamosDataProtection(cfg);
 builder.Services.AddSamosApplication(cfg, runWorkers);
+builder.Services.AddHostedService<SamosControl.Application.Voice.VoiceWatchdog>();
 builder.Services.AddScoped<RequestPermissions>();
 builder.Services.AddSignalR();
 

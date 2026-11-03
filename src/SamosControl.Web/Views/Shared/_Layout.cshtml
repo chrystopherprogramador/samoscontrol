@@ -52,6 +52,11 @@
                 <div class="grp">WhatsApp</div>
                 <a class="@Active("WhatsApp")" asp-controller="WhatsApp" asp-action="Index"><i class="bi bi-whatsapp"></i> Conversas <span class="badge bg-success rounded-pill ms-1 d-none" id="waNavBadge"></span></a>
             }
+            @if (Perms.Has(Perm.VoiceView))
+            {
+                <div class="grp">Voz</div>
+                <a class="@Active("Voice")" asp-controller="Voice" asp-action="Index"><i class="bi bi-telephone"></i> Ligações Roberta</a>
+            }
             @if (Perms.Has(Perm.AiUse))
             {
                 <div class="grp">IA</div>

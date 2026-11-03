@@ -71,6 +71,25 @@ public static class SettingKeys
     public const string ElevenLabsSimilarity = "ELEVENLABS_SIMILARITY";
     public const string ElevenLabsVoiceReplies = "ELEVENLABS_VOICE_REPLIES";
     public const string ElevenLabsUrl = "ELEVENLABS_API_URL";
+    // Ligações de voz da Roberta (prova de conceito; tudo desligado por padrão)
+    public const string VoiceEnabled = "VOICE_CALLS_ENABLED";
+    public const string VoiceKillSwitch = "VOICE_CALLS_KILL_SWITCH";
+    public const string VoiceGoUrl = "VOICE_CALLS_GO_URL";
+    public const string VoiceGoApiKey = "VOICE_CALLS_GO_API_KEY";
+    public const string VoiceGoInstanceId = "VOICE_CALLS_GO_INSTANCE_ID";
+    public const string VoiceGoStreamKey = "VOICE_CALLS_GO_STREAM_KEY";
+    public const string VoiceWebhookToken = "VOICE_CALLS_WEBHOOK_TOKEN";
+    public const string VoiceInboundEnabled = "VOICE_CALLS_INBOUND_ENABLED";
+    public const string VoiceMaxConcurrent = "VOICE_CALLS_MAX_CONCURRENT";
+    public const string VoiceMaxSeconds = "VOICE_CALLS_MAX_SECONDS";
+    public const string VoiceMaxAttemptsDay = "VOICE_CALLS_MAX_ATTEMPTS_DAY";
+    public const string VoiceRingSeconds = "VOICE_CALLS_RING_SECONDS";
+    public const string VoiceStoreTranscript = "VOICE_CALLS_STORE_TRANSCRIPT";
+    public const string VoiceSttMode = "VOICE_CALLS_STT_MODE"; // realtime (padrão) | batch
+    public const string VoiceTtsModel = "VOICE_CALLS_TTS_MODEL"; // vazio = mesmo modelo configurado para áudios
+    public const string VoiceCostTtsPer1kChars = "VOICE_COST_TTS_PER_1K_CHARS";
+    public const string VoiceCostSttPerMinute = "VOICE_COST_STT_PER_MINUTE";
+    public const string VoiceCostLlmPerCall = "VOICE_COST_LLM_PER_CALL";
     // Monitoramento
     public const string AlertNumbers = "MONITORING_ALERT_NUMBERS";
     public const string AlertCooldownMinutes = "MONITORING_ALERT_COOLDOWN_MINUTES";
@@ -85,7 +104,7 @@ public static class SettingKeys
 
     public static readonly HashSet<string> Secrets = new()
     {
-        GoogleApiKey, GoogleBasicPassword, AsaasKey, AsaasWebhookToken, EfiClientSecret, EfiCertBase64, EfiCertPassword, EvolutionKey, EvolutionWebhookToken, SmtpPassword, OllamaApiKey, ElevenLabsKey
+        GoogleApiKey, GoogleBasicPassword, AsaasKey, AsaasWebhookToken, EfiClientSecret, EfiCertBase64, EfiCertPassword, EvolutionKey, EvolutionWebhookToken, SmtpPassword, OllamaApiKey, ElevenLabsKey, VoiceGoApiKey, VoiceGoStreamKey, VoiceWebhookToken
     };
 }
 

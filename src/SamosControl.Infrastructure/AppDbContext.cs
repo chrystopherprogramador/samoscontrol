@@ -43,6 +43,9 @@ public class AppDbContext : DbContext
     public DbSet<AiKnowledge> AiKnowledge => Set<AiKnowledge>();
     public DbSet<ConversationState> ConversationStates => Set<ConversationState>();
     public DbSet<ShadowConversationState> ShadowConversationStates => Set<ShadowConversationState>();
+    public DbSet<VoiceCall> VoiceCalls => Set<VoiceCall>();
+    public DbSet<VoiceCallEvent> VoiceCallEvents => Set<VoiceCallEvent>();
+    public DbSet<VoiceAllowedNumber> VoiceAllowedNumbers => Set<VoiceAllowedNumber>();
     public DbSet<PromptVersion> PromptVersions => Set<PromptVersion>();
     public DbSet<SdrSuggestion> SdrSuggestions => Set<SdrSuggestion>();
     public DbSet<LlmExecution> LlmExecutions => Set<LlmExecution>();
@@ -194,6 +197,16 @@ public class AppDbContext : DbContext
         b.Entity<AiKnowledge>().HasIndex(x => x.Status);
         b.Entity<ConversationState>().HasIndex(x => x.LeadId).IsUnique();
         b.Entity<ShadowConversationState>().HasIndex(x => x.LeadId).IsUnique();
+        b.Entity<VoiceCall>(e =>
+        {
+            e.HasIndex(x => x.PublicId).IsUnique();
+            e.HasIndex(x => x.IdempotencyKey).IsUnique();
+            e.HasIndex(x => x.ExternalCallId);
+            e.HasIndex(x => new { x.PhoneKey, x.CreatedAt });
+            e.Property(x => x.EstimatedCost).HasPrecision(12, 4);
+        });
+        b.Entity<VoiceCallEvent>().HasIndex(x => new { x.VoiceCallId, x.At });
+        b.Entity<VoiceAllowedNumber>().HasIndex(x => x.PhoneKey).IsUnique();
         b.Entity<PromptVersion>().HasIndex(x => new { x.Name, x.Version }).IsUnique();
         b.Entity<SdrSuggestion>().HasIndex(x => new { x.Status, x.CreatedAt });
         b.Entity<SdrSuggestion>().HasIndex(x => x.ContactId);

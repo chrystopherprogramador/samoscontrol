@@ -1,0 +1,76 @@
+@using SamosControl.Application.Voice
+@{
+    ViewData["Title"] = "Ligações da Roberta";
+    var calls = (List<VoiceCall>)ViewBag.Calls;
+    var allowed = (List<VoiceAllowedNumber>)ViewBag.Allowed;
+    var why = (string?)ViewBag.Readiness;
+    var lim = (VoiceLimits)ViewBag.Limits;
+    string Badge(VoiceCallState s) => s switch { VoiceCallState.Failed => "bg-danger", VoiceCallState.Completed => "bg-success", VoiceCallState.Speaking or VoiceCallState.Listening or VoiceCallState.Thinking or VoiceCallState.Connected or VoiceCallState.Interrupted => "bg-primary", _ => "bg-secondary" };
+}
+<div class="alert alert-warning small">
+    Prova de conceito experimental. As ligações usam um protocolo não oficial do WhatsApp (risco de bloqueio do número remetente). Só são permitidos números autorizados abaixo; o áudio nunca é gravado.
+</div>
+@if (why != null) { <div class="alert alert-secondary"><i class="bi bi-info-circle"></i> @why</div> }
+<div class="row g-3">
+    <div class="col-lg-5">
+        <div class="card mb-3"><div class="card-body">
+            <h6>Ligar com Roberta</h6>
+            <form method="post" asp-action="Start">
+                <input type="hidden" name="key" value="@ViewBag.Key" />
+                <select name="phone" class="form-select mb-2" required>
+                    <option value="">Selecione um número autorizado…</option>
+                    @foreach (var a in allowed.Where(a => a.Active)) { <option value="@a.Phone">@a.Label (@a.Phone)</option> }
+                </select>
+                <button class="btn btn-success" disabled="@(why != null)"><i class="bi bi-telephone-outbound"></i> Ligar com Roberta</button>
+            </form>
+            <div class="small text-muted mt-2">Limites: @lim.MaxConcurrent simultânea(s), @lim.MaxSeconds s por ligação, @lim.MaxAttemptsPerDay tentativas/24 h por número.</div>
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
+            <h6>Números autorizados</h6>
+            <table class="table table-sm align-middle">
+                @foreach (var a in allowed.Where(a => a.Active))
+                {
+                    <tr><td>@a.Label<div class="small text-muted">@a.Phone · consentimento: @a.ConsentBy @a.ConsentAt?.ToString("dd/MM/yyyy")</div></td>
+                    <td class="text-end"><form method="post" asp-action="RemoveAllowed"><input type="hidden" name="id" value="@a.Id" /><button class="btn btn-sm btn-outline-danger" title="Remover"><i class="bi bi-x"></i></button></form></td></tr>
+                }
+            </table>
+            @if (Perms.Has(Perm.VoiceManage))
+            {
+                <form method="post" asp-action="AddAllowed" class="row g-2">
+                    <div class="col-6"><input name="label" class="form-control form-control-sm" placeholder="Nome" required /></div>
+                    <div class="col-6"><input name="phone" class="form-control form-control-sm" placeholder="DDD + número" required /></div>
+                    <div class="col-12 form-check ms-2"><input type="checkbox" class="form-check-input" name="consent" value="true" id="vc" /><label class="form-check-label small" for="vc">O titular autorizou receber ligações de teste automatizadas.</label></div>
+                    <div class="col-12"><button class="btn btn-sm btn-outline-primary">Autorizar</button></div>
+                </form>
+            }
+        </div></div>
+        @if (Perms.Has(Perm.VoiceManage))
+        {
+            <div class="card"><div class="card-body d-flex align-items-center gap-2">
+                <div class="flex-grow-1"><h6 class="mb-0">Kill switch global</h6><div class="small text-muted">@(lim.KillSwitch ? "ATIVO: nenhuma ligação é permitida." : "Inativo.")</div></div>
+                <form method="post" asp-action="KillSwitch"><input type="hidden" name="on" value="@((!lim.KillSwitch).ToString().ToLower())" /><button class="btn @(lim.KillSwitch ? "btn-outline-success" : "btn-danger")">@(lim.KillSwitch ? "Desativar" : "Ativar")</button></form>
+                <a class="btn btn-outline-secondary" asp-controller="Settings" asp-action="Index" asp-route-category="ligacoes"><i class="bi bi-gear"></i></a>
+            </div></div>
+        }
+    </div>
+    <div class="col-lg-7">
+        <div class="card"><div class="card-body">
+            <h6>Ligações recentes</h6>
+            <table class="table table-sm align-middle" id="voiceTable">
+                <thead><tr><th>Contato</th><th>Estado</th><th>Duração</th><th>Resultado</th><th></th></tr></thead>
+                @foreach (var c in calls)
+                {
+                    <tr data-id="@c.Id">
+                        <td>@(c.ContactName ?? c.Phone)<div class="small text-muted">@c.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm") · @(c.Direction == VoiceDirection.Inbound ? "recebida" : "enviada")</div></td>
+                        <td><span class="badge @Badge(c.State)" data-role="state">@c.State</span></td>
+                        <td data-role="dur">@(c.DurationSeconds > 0 ? c.DurationSeconds + " s" : "-")</td>
+                        <td class="small">@(c.Outcome ?? c.EndReason ?? "-")</td>
+                        <td><a asp-action="Details" asp-route-id="@c.Id" class="btn btn-sm btn-outline-secondary">Abrir</a></td>
+                    </tr>
+                }
+                @if (calls.Count == 0) { <tr><td colspan="5" class="text-muted text-center py-4">Nenhuma ligação ainda.</td></tr> }
+            </table>
+        </div></div>
+    </div>
+</div>
+@section Scripts { <script src="~/js/voice.js" asp-append-version="true"></script> }

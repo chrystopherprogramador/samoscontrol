@@ -1,0 +1,34 @@
+# Ambiente de teste ISOLADO do Evolution Go Calls. Sem portas publicadas, rede e banco próprios.
+# Não toca na Evolution API de produção.
+services:
+  evogo-calls-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evogo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina no .env}
+      POSTGRES_DB: evogo
+    volumes:
+      - evogo_calls_db:/var/lib/postgresql/data
+    networks: [voice_test]
+
+  evogo-calls:
+    # Compilado do código-fonte no commit fixo do PR #1 (nunca o binário versionado no repositório).
+    build:
+      context: https://github.com/luis-kovi/evolution-go-calls.git#e21ce0dd7634f3047410c893b5e4d1c082034b84
+    restart: unless-stopped
+    depends_on: [evogo-calls-db]
+    environment:
+      GLOBAL_API_KEY: ${GLOBAL_API_KEY:?defina no .env}
+      CALL_STREAM_SIGNING_KEY: ${CALL_STREAM_SIGNING_KEY:?defina no .env}
+      EVOLUTION_OPERATOR_EMAIL: ${EVOLUTION_OPERATOR_EMAIL:?defina no .env}
+      # Variáveis de banco/porta: confira o .env.example do repositório upstream nesse commit e ajuste aqui.
+    networks: [voice_test]
+    # SEM "ports:". Exposição só pela rede interna.
+
+networks:
+  voice_test:
+    name: voice_test
+
+volumes:
+  evogo_calls_db:

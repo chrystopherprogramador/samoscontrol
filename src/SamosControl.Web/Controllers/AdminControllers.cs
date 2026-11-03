@@ -261,6 +261,26 @@ public static class SettingCatalog
             new(SettingKeys.ElevenLabsStability, "Estabilidade (0 a 1, padrão 0.5)", false, "Mais alta = voz mais constante; mais baixa = mais expressiva."),
             new(SettingKeys.ElevenLabsSimilarity, "Similaridade (0 a 1, padrão 0.75)")
         }),
+        new("ligacoes", "Ligações de voz (Roberta)", "bi-telephone", new SettingField[]
+        {
+            new(SettingKeys.VoiceEnabled, "Ligações ativas (true/false, padrão false)", false, "Prova de conceito. Só números autorizados em Ligações > Autorizados."),
+            new(SettingKeys.VoiceKillSwitch, "Kill switch global (true/false)", false, "true bloqueia novas ligações e encerra as em andamento em ~2 s."),
+            new(SettingKeys.VoiceGoUrl, "URL do Evolution Go Calls", false, "Serviço isolado de testes, ex.: http://evogo-calls:8080 (rede interna)."),
+            new(SettingKeys.VoiceGoApiKey, "API key (token da instância)", true),
+            new(SettingKeys.VoiceGoInstanceId, "ID da instância (para stream assinado)"),
+            new(SettingKeys.VoiceGoStreamKey, "Chave de assinatura do stream (CALL_STREAM_SIGNING_KEY)", true),
+            new(SettingKeys.VoiceWebhookToken, "Token do webhook de chamadas", true, "Use em /webhooks/voice?token=..."),
+            new(SettingKeys.VoiceInboundEnabled, "Atender ligações recebidas (true/false)", false, "Somente de números autorizados."),
+            new(SettingKeys.VoiceMaxConcurrent, "Ligações simultâneas (padrão 1, máx. 3)"),
+            new(SettingKeys.VoiceMaxSeconds, "Duração máxima em segundos (padrão 300)"),
+            new(SettingKeys.VoiceMaxAttemptsDay, "Tentativas por número em 24 h (padrão 3)"),
+            new(SettingKeys.VoiceRingSeconds, "Tempo de toque em segundos (padrão 40)"),
+            new(SettingKeys.VoiceStoreTranscript, "Guardar transcrição (true/false, padrão false)", false, "O áudio nunca é gravado. Só habilite com consentimento."),
+            new(SettingKeys.VoiceSttMode, "Modo STT: realtime (padrão) ou batch"),
+            new(SettingKeys.VoiceCostTtsPer1kChars, "Tarifa TTS por 1000 caracteres", false, "Vazio = custo n/d."),
+            new(SettingKeys.VoiceCostSttPerMinute, "Tarifa STT por minuto"),
+            new(SettingKeys.VoiceCostLlmPerCall, "Tarifa LLM por chamada")
+        }),
         new("monitoramento", "Monitoramento", "bi-activity", new SettingField[]
         {
             new(SettingKeys.AlertNumbers, "Números de alerta WhatsApp", false, "Separados por vírgula, com DDI/DDD."), new(SettingKeys.AlertCooldownMinutes, "Cooldown entre lembretes (min)")

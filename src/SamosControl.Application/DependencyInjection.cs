@@ -43,6 +43,8 @@ public static class DependencyInjection
         s.AddHttpClient();
         s.AddHttpClient("monitor");
         s.AddHttpClient("elevenlabs");
+        s.AddHttpClient("elevenlabs-stream");
+        s.AddHttpClient("evogo-calls");
         s.TryAddScoped<ICurrentUser, SystemUser>();
         s.TryAddSingleton<INotificationPublisher, NullNotificationPublisher>();
 
@@ -58,6 +60,9 @@ public static class DependencyInjection
         s.AddSingleton<IEvolutionInstances, EvolutionInstances>();
         s.AddSingleton<IElevenLabs, ElevenLabsIntegration>();
         s.AddSingleton<IAiProvider, OllamaProvider>();
+        s.AddSingleton<Integrations.Voice.ICallGateway, Integrations.Voice.EvolutionGoCallsGateway>();
+        s.AddSingleton<Integrations.Voice.IVoiceSpeech, Integrations.Voice.ElevenLabsVoiceSpeech>();
+        s.AddSingleton<Voice.VoiceCallManager>();
 
         s.AddScoped<AuditService>();
         s.AddScoped<NotificationService>();

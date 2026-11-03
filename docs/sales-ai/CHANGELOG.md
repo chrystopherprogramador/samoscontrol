@@ -1,5 +1,8 @@
 # Changelog
 
+## Roberta Voice Calls 1.0 — PoC de ligações (sobre `464a056`)
+- Ligações de voz WhatsApp via Evolution Go Calls (experimental), VAD, STT, TTS streaming, barge-in, limites, kill switch, painel e migration aditiva `VoiceCalls`. Desligado por padrão. Ver `ROBERTA_VOICE.md`.
+
 ## Roberta 4.0 — Agente comercial adaptativa (sobre `0a5629d`)
 - Motor com ações flexíveis, objeções, plano validável, memória com hipóteses, anti-repetição. Ver `ROBERTA_4.md`.
 - Shadow isolado, dedupe/concorrência, política de follow-up, métricas, prompt v3 (transparência sobre IA).

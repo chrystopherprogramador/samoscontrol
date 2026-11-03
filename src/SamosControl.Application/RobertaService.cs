@@ -116,14 +116,16 @@ public class RobertaService
     private static string GroundedText(Lead lead, ConversationState s, string kb) =>
         $"{lead.Name} {lead.CompanyName} {lead.City} {lead.State} {lead.Segment} {s.CurrentErp} {s.StoreCount} {s.PainPoints} {kb} {ProductCatalog.AllText(s.MainPain)}";
 
-    private async Task<string> GenerateAsync(PromptVersion p, Decision d, Lead lead, ConversationState s, string kbPrompt, List<AiChatMessage> hist, string text, string? fixes, ReplyFormat format, IReadOnlyList<string> recent, CancellationToken ct)
+    private const string VoiceCallNote = "\n\nCANAL: LIGAÇÃO DE VOZ AO VIVO. Sua resposta será falada em voz alta. Use no máximo 2 frases curtas (cerca de 40 palavras), sem listas, sem emojis, sem links, sem markdown. Nunca peça para o cliente clicar ou ler algo. Se já se apresentou na ligação, não se apresente de novo. Não repita perguntas já respondidas nos FATOS.";
+
+    private async Task<string> GenerateAsync(PromptVersion p, Decision d, Lead lead, ConversationState s, string kbPrompt, List<AiChatMessage> hist, string text, string? fixes, ReplyFormat format, IReadOnlyList<string> recent, CancellationToken ct, bool voiceCall = false)
     {
         var asked = ConversationStateRules.Set(s.QuestionsAsked);
         var openers = recent.Select(ResponseValidator.Opener).Where(x => x.Length > 0).Distinct().ToList();
         var sys = p.Content + "\n\nAÇÃO: " + Instruction(d.Action, d.Topic) + "\n" + FormatInstruction(format) + "\n\nFATOS:\n" + FactsBlock(lead, s) +
                   "\nPERGUNTAS JÁ FEITAS (não repetir): " + (asked.Count == 0 ? "nenhuma" : string.Join(", ", asked)) +
                   (openers.Count == 0 ? "" : "\nABERTURAS JÁ USADAS (comece de outro jeito): " + string.Join(", ", openers)) + ProductBlock(d, s) +
-                  "\n\nBASE DE CONHECIMENTO:\n" + kbPrompt + (fixes == null ? "" : "\n\nA TENTATIVA ANTERIOR FOI REPROVADA PELOS MOTIVOS: " + fixes + ". Corrija.");
+                  "\n\nBASE DE CONHECIMENTO:\n" + kbPrompt + (fixes == null ? "" : "\n\nA TENTATIVA ANTERIOR FOI REPROVADA PELOS MOTIVOS: " + fixes + ". Corrija.") + (voiceCall ? VoiceCallNote : "");
         var msgs = new List<AiChatMessage> { new("system", sys) };
         msgs.AddRange(hist.TakeLast(8));
         if (hist.Count == 0 || hist[^1].Role != "user" || hist[^1].Content != text) msgs.Add(new("user", text));
@@ -167,7 +169,7 @@ public class RobertaService
 
     public const string IdentityReply = "Sou a Roberta, assistente virtual da Samos (uma inteligência artificial). Posso continuar te ajudando por aqui ou, se preferir, chamo alguém do nosso time para falar com você. Como prefere?";
 
-    public async Task<RobertaProposal> ProposeAsync(SdrContact contact, Lead lead, string text, List<AiChatMessage> hist, bool viaAudio = false, TimeSpan? replyDelay = null, bool voiceAvailable = false, bool lastOutboundWasAudio = false, CancellationToken ct = default, bool shadow = false)
+    public async Task<RobertaProposal> ProposeAsync(SdrContact contact, Lead lead, string text, List<AiChatMessage> hist, bool viaAudio = false, TimeSpan? replyDelay = null, bool voiceAvailable = false, bool lastOutboundWasAudio = false, CancellationToken ct = default, bool shadow = false, bool voiceCall = false)
     {
         ConversationState state; ShadowConversationState? shadowRow = null;
         if (shadow) (state, shadowRow) = await ShadowStateAsync(lead, ct); else state = await StateAsync(lead, ct);
@@ -209,7 +211,7 @@ public class RobertaService
                 {
                     try
                     {
-                        reply = await GenerateAsync(prompt, d, lead, state, kbText, hist, text, fixes, format, recent, ct);
+                        reply = await GenerateAsync(prompt, d, lead, state, kbText, hist, text, fixes, format, recent, ct, voiceCall);
                         if (format != ReplyFormat.Text && FormatAdvisor.Finalize(format, reply) == ReplyFormat.Text) { format = ReplyFormat.Text; reply = FormatAdvisor.Plain(reply); }
                         else if (format == ReplyFormat.AudioPlusText && FormatAdvisor.Finalize(format, reply) == ReplyFormat.Audio) format = ReplyFormat.Audio;
                         var ctx = new ValidationContext(d.Action, recent, asked, GroundedText(lead, state, kbText), text, format);
