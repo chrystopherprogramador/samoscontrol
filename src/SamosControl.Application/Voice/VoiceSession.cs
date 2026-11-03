@@ -15,6 +15,8 @@ public class VoiceSessionOptions
     public int BrainTimeoutMs { get; set; } = 20000;
     public int SttCommitTimeoutMs { get; set; } = 6000;
     public int BargeInFrames { get; set; } = 6;
+    /// <summary>Envia quadros de silêncio enquanto a Roberta não fala: sem fluxo contínuo de áudio o WhatsApp do cliente mostra "reconectando".</summary>
+    public bool KeepAliveSilence { get; set; } = true;
     public int EndSilenceFrames { get; set; } = 12;
     /// <summary>true = pula o STT em tempo real e usa só o modo em lote.</summary>
     public bool BatchOnly { get; set; }
@@ -109,11 +111,12 @@ public class VoiceSession
         using var reg = external.Register(() => End("shutdown"));
         var reader = Task.Run(ReadLoopAsync);
         var ticker = Task.Run(TickLoopAsync);
+        var keepAlive = _opt.KeepAliveSilence ? Task.Run(KeepAliveLoopAsync) : Task.CompletedTask;
         if (initial == VoiceCallState.Connected) { _connectedAt = _clock.GetUtcNow(); StartOpener(); }
         await _done.Task;
 
         _cts.Cancel(); lock (_lock) _turnCts.Cancel();
-        try { await Task.WhenAll(reader, ticker, _turnTask); } catch { /* cancelamentos esperados */ }
+        try { await Task.WhenAll(reader, ticker, keepAlive, _turnTask); } catch { /* cancelamentos esperados */ }
         BrainSummary? summary = null;
         try
         {
@@ -464,6 +467,22 @@ public class VoiceSession
             var text = await _brain.OpenerAsync(ct);
             await SpeakAsync(text, id, ct);
         });
+    }
+
+    private async Task KeepAliveLoopAsync()
+    {
+        var silence = Pcm.Silence();
+        try
+        {
+            while (!_cts.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(VoiceAudio.FrameMs), _clock, _cts.Token);
+                if (_connectedAt == null || _player.IsPlaying || Ending) continue;
+                await _stream.SendAudioAsync(silence, _cts.Token);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { _host.Event("keepalive_error", ex.Message); }
     }
 
     private async Task TickLoopAsync()

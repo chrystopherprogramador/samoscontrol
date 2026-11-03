@@ -115,7 +115,7 @@ internal sealed class Sim
     public readonly FakeSpeech Speech = new();
     public readonly FakeBrain Brain = new();
     public readonly FakeHost Host = new();
-    public readonly VoiceSessionOptions Opt = new() { EndSilenceFrames = 5, FillerAfterMs = 2500, BrainTimeoutMs = 20000, SilenceSeconds = 30 };
+    public readonly VoiceSessionOptions Opt = new() { EndSilenceFrames = 5, FillerAfterMs = 2500, BrainTimeoutMs = 20000, SilenceSeconds = 30, KeepAliveSilence = false };
     public VoiceSession Session = null!;
     public Task<VoiceSessionResult> Run = null!;
 
@@ -313,6 +313,21 @@ public class VoiceScenarioTests
         s.Session.RequestEnd("user_hangup");
         var r = await s.Finish();
         Assert.Equal(VoiceCallState.Completed, r.FinalState);
+    }
+
+    // keepalive: sem fala, o fluxo de áudio continua (evita "reconectando" no WhatsApp do cliente); sem chamada conectada, nada é enviado
+    [Fact]
+    public async Task KeepAlive_SendsSilenceWhileListening_ButNotBeforeConnected()
+    {
+        var s = new Sim(); s.Opt.KeepAliveSilence = true; s.Opt.RingSeconds = 600; s.Start(VoiceCallState.Ringing);
+        await s.Step(1000);
+        Assert.Equal(0, s.Stream.SentCount);
+        s.Stream.Push(Pcm.Silence());
+        await s.WaitOpenerDone();
+        var before = s.Stream.SentCount;
+        await s.Quiet(20);
+        Assert.True(s.Stream.SentCount - before >= 10, "deveria enviar silêncio continuamente");
+        s.Session.RequestEnd("user_hangup"); await s.Finish();
     }
 
     // 3

@@ -106,9 +106,18 @@ public class SpeechPlayer
     /// <summary>Momento (relógio injetado) em que o primeiro quadro foi enviado; null se nada foi enviado.</summary>
     public DateTimeOffset? FirstFrameAt { get; private set; }
     public long FramesSent { get; private set; }
+    /// <summary>true enquanto PlayAsync está enviando fala (o keepalive de silêncio não deve intercalar).</summary>
+    public volatile bool IsPlaying;
 
     /// <summary>Devolve true se tocou até o fim; false se cancelado. Exceções do envio sobem ao chamador.</summary>
     public async Task<bool> PlayAsync(IAsyncEnumerable<byte[]> chunks, CancellationToken ct)
+    {
+        IsPlaying = true;
+        try { return await PlayCoreAsync(chunks, ct); }
+        finally { IsPlaying = false; }
+    }
+
+    private async Task<bool> PlayCoreAsync(IAsyncEnumerable<byte[]> chunks, CancellationToken ct)
     {
         var frame = VoiceAudio.FrameBytes;
         FirstFrameAt = null; FramesSent = 0;
