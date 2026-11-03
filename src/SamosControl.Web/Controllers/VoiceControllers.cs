@@ -127,7 +127,7 @@ public class VoiceWebhookController : ControllerBase
         var body = await r.ReadToEndAsync(ct);
         var (ev, callId, from) = Parse(body);
         if (ev == null) return Ok(new { message = "ignored" });
-        try { var res = await _voice.HandleWebhookAsync(ev, callId, from, ct); return Ok(new { message = res }); }
+        try { var res = await _voice.HandleWebhookAsync(ev, callId, from, ct, body); return Ok(new { message = res }); }
         catch (Exception ex) { _log.LogWarning(ex, "Voz: erro ao tratar webhook {Event}", ev); return Ok(new { message = "error" }); }
     }
 

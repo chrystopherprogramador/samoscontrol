@@ -209,12 +209,18 @@ public class VoiceCallManager
     public void KillAll(string reason = "kill_switch") { foreach (var a in _active.Values) a.Session.RequestEnd(reason); }
 
     /// <summary>Webhook do Evolution Go Calls. Nomes dos eventos documentados: CallOffer, CallAccept, CallTerminate.</summary>
-    public async Task<string> HandleWebhookAsync(string eventName, string? externalCallId, string? from, CancellationToken ct = default)
+    public async Task<string> HandleWebhookAsync(string eventName, string? externalCallId, string? from, CancellationToken ct = default, string? rawBody = null)
     {
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         VoiceCall? c = null;
         if (!string.IsNullOrWhiteSpace(externalCallId)) c = await db.VoiceCalls.FirstOrDefaultAsync(x => x.ExternalCallId == externalCallId, ct);
+        if (c != null && rawBody != null)
+        {
+            // diagnóstico: sequência real de eventos do WhatsApp (Offer/Accept/RelayLatency/Terminate)
+            db.VoiceCallEvents.Add(new VoiceCallEvent { VoiceCallId = c.Id, Type = ("wh:" + eventName).Length > 40 ? ("wh:" + eventName)[..40] : "wh:" + eventName, Detail = rawBody.Length > 900 ? rawBody[..900] : rawBody });
+            await db.SaveChangesAsync(ct);
+        }
         switch (eventName)
         {
             case "CallAccept":
