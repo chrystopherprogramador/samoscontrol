@@ -89,7 +89,16 @@ Escolha atual: **Scribe Realtime**, com fallback em lote pelo STT já integrado.
 | VAD, estados, barge-in, silêncio, limite de duração, falhas de STT/TTS/LLM/WebSocket, idempotência, limites, kill switch, lista de autorizados, memória compartilhada WhatsApp↔ligação | **Simulado** (49 testes automatizados com relógio e rede falsos). Os 20 cenários da especificação estão cobertos de forma simulada. |
 | Formato das mensagens do Evolution Go Calls | Baseado na leitura do código do PR #1; **não executado**. |
 | Formato dos webhooks de chamada | **Não confirmado.** |
-| Ligação real no WhatsApp, áudio bidirecional, latência real, qualidade do VAD, eco | **Não provado.** Depende do teste autorizado. |
+| Ligação real no WhatsApp, áudio bidirecional | **Comprovado em teste manual (03/11/2026, números de teste autorizados):** a ligação toca, a Roberta é ouvida, o STT transcreve a fala do cliente e ela responde. Latência e qualidade do VAD **não medidas** de forma sistemática. |
+
+## 7.1 Achados do teste real (configuração e comportamento)
+- `user/check` revela a forma do número que o WhatsApp conhece (BR com/sem o 9º dígito); o gateway resolve isso antes do `call/dial`.
+- A instância precisa de `subscribe: ["CALL"]` no `/instance/connect`, senão nenhum webhook de chamada é enviado.
+- O WebSocket de áudio **não passa por Cloudflare/proxy sem WebSocket**: o Samos usa a porta direta do serviço (`VOICE_CALLS_GO_URL=http://<host>:<porta>`). A autenticação do stream usa o **UUID** da instância (`VOICE_CALLS_GO_INSTANCE_ID`).
+- Sem fluxo contínuo de áudio o WhatsApp do cliente mostra "reconectando": o Samos envia quadros de silêncio enquanto a Roberta não fala (`KeepAliveSilence`).
+- Eco da voz da Roberta no microfone do cliente causava auto-interrupção: o barge-in exige ~360 ms de fala e limiar 3× mais alto enquanto ela fala. Fone de ouvido ajuda.
+- Frases de espera são sorteadas (`FillerTexts`). O limite de tentativas por 24 h está desligado por padrão (0 = sem limite).
+- Os eventos do webhook de chamada ficam gravados na linha do tempo da ligação (`wh:*`) para diagnóstico.
 | Latência | Medida em cada ligação (fim da fala → início do áudio, com etapas). Nenhum número é afirmado aqui. |
 
 ## 8. Riscos restantes
