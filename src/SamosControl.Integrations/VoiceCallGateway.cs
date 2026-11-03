@@ -118,9 +118,31 @@ public class EvolutionGoCallsGateway : ICallGateway
     /// <summary>POST /call/dial {number, video:false} → {message, callId}. Marcado como EXPERIMENTAL pelo projeto.</summary>
     public async Task<string> DialAsync(string phone, CancellationToken ct)
     {
-        var r = await PostAsync("call/dial", new { number = phone, video = false }, ct);
+        var number = await ResolveWhatsAppNumberAsync(phone, ct);
+        var r = await PostAsync("call/dial", new { number, video = false }, ct);
         var id = r?["callId"]?.GetValue<string>();
         return string.IsNullOrWhiteSpace(id) ? throw new IntegrationException("O Evolution Go Calls não devolveu callId no /call/dial.") : id;
+    }
+
+    /// <summary>Números BR podem estar registrados no WhatsApp com ou sem o 9º dígito. Consulta POST /user/check (comportamento observado na instância) e usa a forma que existe; se a consulta falhar, usa o número original.</summary>
+    private async Task<string> ResolveWhatsAppNumberAsync(string phone, CancellationToken ct)
+    {
+        var candidates = new List<string> { phone };
+        if (phone.StartsWith("55") && phone.Length == 13 && phone[4] == '9') candidates.Add(phone.Remove(4, 1));
+        else if (phone.StartsWith("55") && phone.Length == 12) candidates.Add(phone.Insert(4, "9"));
+        try
+        {
+            var r = await PostAsync("user/check", new { number = candidates }, ct);
+            foreach (var u in r?["data"]?["Users"]?.AsArray() ?? [])
+            {
+                if (u?["IsInWhatsapp"]?.GetValue<bool>() != true) continue;
+                var q = u["Query"]?.GetValue<string>() ?? "";
+                var digits = new string(q.Where(char.IsDigit).ToArray());
+                if (digits.Length >= 10) return digits;
+            }
+        }
+        catch (IntegrationException) { /* segue com o número original */ }
+        return phone;
     }
 
     public Task AnswerAsync(string callCreator, string callId, CancellationToken ct) => PostAsync("call/answer", new { callCreator, callId }, ct);
