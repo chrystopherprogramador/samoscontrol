@@ -14,7 +14,7 @@ public class VoiceSessionOptions
     public int FillerAfterMs { get; set; } = 2500;
     public int BrainTimeoutMs { get; set; } = 20000;
     public int SttCommitTimeoutMs { get; set; } = 6000;
-    public int BargeInFrames { get; set; } = 3;
+    public int BargeInFrames { get; set; } = 6;
     public int EndSilenceFrames { get; set; } = 12;
     /// <summary>true = pula o STT em tempo real e usa só o modo em lote.</summary>
     public bool BatchOnly { get; set; }
@@ -218,7 +218,7 @@ public class VoiceSession
 
         var speaking = State == VoiceCallState.Speaking;
         _vad.MinSpeechFrames = speaking ? _opt.BargeInFrames : 2;
-        _vad.ThresholdScale = speaking ? 2.0 : 1.0; // eco da própria voz da Roberta
+        _vad.ThresholdScale = speaking ? 3.0 : 1.0; // eco da própria voz da Roberta no microfone do cliente
         if (!_vad.InSpeech) { _preroll.Enqueue(frame); while (_preroll.Count > 5) _preroll.Dequeue(); }
 
         var ev = _vad.Process(frame);

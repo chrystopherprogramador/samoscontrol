@@ -156,7 +156,7 @@ internal sealed class Sim
     public async Task SayAndWaitBrain(string said, int expectCalls = 1)
     {
         Speech.Transcripts.Enqueue(said);
-        await Talk(5); await Quiet(Opt.EndSilenceFrames + 2);
+        await Talk(7); await Quiet(Opt.EndSilenceFrames + 2);
         Assert.True(await Until(() => Brain.Calls >= expectCalls), "o cérebro deveria ter sido chamado");
     }
 }
