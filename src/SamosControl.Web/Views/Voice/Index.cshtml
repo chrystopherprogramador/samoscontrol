@@ -23,7 +23,7 @@
                 </select>
                 <button class="btn btn-success" disabled="@(why != null)"><i class="bi bi-telephone-outbound"></i> Ligar com Roberta</button>
             </form>
-            <div class="small text-muted mt-2">Limites: @lim.MaxConcurrent simultânea(s), @lim.MaxSeconds s por ligação, @lim.MaxAttemptsPerDay tentativas/24 h por número.</div>
+            <div class="small text-muted mt-2">Limites: @lim.MaxConcurrent simultânea(s), @lim.MaxSeconds s por ligação, @(lim.MaxAttemptsPerDay > 0 ? lim.MaxAttemptsPerDay + " tentativas/24 h por número" : "sem limite de tentativas").</div>
         </div></div>
         <div class="card mb-3"><div class="card-body">
             <h6>Números autorizados</h6>

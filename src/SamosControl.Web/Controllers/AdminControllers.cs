@@ -273,7 +273,7 @@ public static class SettingCatalog
             new(SettingKeys.VoiceInboundEnabled, "Atender ligações recebidas (true/false)", false, "Somente de números autorizados."),
             new(SettingKeys.VoiceMaxConcurrent, "Ligações simultâneas (padrão 1, máx. 3)"),
             new(SettingKeys.VoiceMaxSeconds, "Duração máxima em segundos (padrão 300)"),
-            new(SettingKeys.VoiceMaxAttemptsDay, "Tentativas por número em 24 h (padrão 3)"),
+            new(SettingKeys.VoiceMaxAttemptsDay, "Tentativas por número em 24 h (0 = sem limite, padrão)"),
             new(SettingKeys.VoiceRingSeconds, "Tempo de toque em segundos (padrão 40)"),
             new(SettingKeys.VoiceStoreTranscript, "Guardar transcrição (true/false, padrão false)", false, "O áudio nunca é gravado. Só habilite com consentimento."),
             new(SettingKeys.VoiceSttMode, "Modo STT: realtime (padrão) ou batch"),

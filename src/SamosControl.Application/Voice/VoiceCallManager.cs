@@ -21,7 +21,7 @@ public record VoiceLimits(bool Enabled, bool KillSwitch, int MaxConcurrent, int 
         static bool B(string? v) => string.Equals(v?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
         return new(B(s.Get(SettingKeys.VoiceEnabled)), B(s.Get(SettingKeys.VoiceKillSwitch)),
             I(s.Get(SettingKeys.VoiceMaxConcurrent), 1, 1, 3), I(s.Get(SettingKeys.VoiceMaxSeconds), 300, 30, 900),
-            I(s.Get(SettingKeys.VoiceMaxAttemptsDay), 3, 1, 20), I(s.Get(SettingKeys.VoiceRingSeconds), 40, 10, 90),
+            I(s.Get(SettingKeys.VoiceMaxAttemptsDay), 0, 0, 10000), I(s.Get(SettingKeys.VoiceRingSeconds), 40, 10, 90),
             B(s.Get(SettingKeys.VoiceStoreTranscript)), B(s.Get(SettingKeys.VoiceInboundEnabled)));
     }
 }
@@ -89,8 +89,8 @@ public class VoiceCallManager
             if (same != null) return new(false, same.Id, "Já existe uma ligação em andamento para este número.", true);
             if (running.Count >= l.MaxConcurrent) return new(false, null, $"Limite de ligações simultâneas atingido ({l.MaxConcurrent}).");
             var since = _clock.GetUtcNow().UtcDateTime.AddHours(-24);
-            var attempts = await db.VoiceCalls.CountAsync(x => x.PhoneKey == key && x.CreatedAt >= since, ct);
-            if (attempts >= l.MaxAttemptsPerDay) return new(false, null, $"Limite de tentativas nas últimas 24 h atingido ({l.MaxAttemptsPerDay}).");
+            var attempts = l.MaxAttemptsPerDay > 0 ? await db.VoiceCalls.CountAsync(x => x.PhoneKey == key && x.CreatedAt >= since, ct) : 0;
+            if (l.MaxAttemptsPerDay > 0 && attempts >= l.MaxAttemptsPerDay) return new(false, null, $"Limite de tentativas nas últimas 24 h atingido ({l.MaxAttemptsPerDay}).");
 
             (lead, contact) = await VoiceContactResolver.EnsureAsync(db, norm, allowed.Label, ct);
             call = new VoiceCall
