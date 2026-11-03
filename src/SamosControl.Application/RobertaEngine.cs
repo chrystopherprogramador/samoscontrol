@@ -9,7 +9,13 @@ namespace SamosControl.Application;
 public enum RobertaAction
 {
     AskCurrentERP, AskStoreCount, AskPainPoint, ExplainFeature, ExplainStockControl, ExplainMultistore, ExplainPricing,
-    OfferDemo, ScheduleDemo, HandleObjection, FollowUp, HandoffToSeller, CloseConversation, DoNotContact
+    OfferDemo, ScheduleDemo, HandleObjection, FollowUp, HandoffToSeller, CloseConversation, DoNotContact,
+    /// <summary>Acknowledge a pain, connect it briefly to the product and ask ONE probing question.</summary>
+    DeepenPain,
+    /// <summary>Connect the pain to a product angle (insight / mini-pitch); a question is optional.</summary>
+    PitchFeature,
+    /// <summary>The lead is busy: short, respectful, no questions.</summary>
+    RespectBusy
 }
 
 /// <summary>What the inbound message means, extracted with deterministic rules (no LLM).</summary>
@@ -38,6 +44,23 @@ public record InboundSignals
     public bool TopicStock { get; init; }
     public bool TopicMultistore { get; init; }
     public bool TopicImplementation { get; init; }
+    /// <summary>Pain category code (see <see cref="Pain"/>) when the message states a pain; null otherwise.</summary>
+    public string? PainCategory { get; init; }
+    /// <summary>0 none, 1 mentioned, 2 strong ("sempre", "todo dia"...).</summary>
+    public int PainIntensity { get; init; }
+    public bool Dissatisfied { get; init; }
+    public bool Busy { get; init; }
+    public bool Curious { get; init; }
+    public bool Informal { get; init; }
+    public bool Technical { get; init; }
+    public int WordCount { get; init; }
+}
+
+/// <summary>Pain categories (stable codes persisted in <see cref="ConversationState.MainPain"/>).</summary>
+public static class Pain
+{
+    public const string StockDivergence = "estoque_divergencia", Stock = "estoque", Fiscal = "fiscal", Financial = "financeiro",
+        Sales = "vendas_pdv", System = "sistema_atual", Customers = "clientes", Multistore = "multiloja", Ecommerce = "ecommerce", Other = "outra";
 }
 
 public static class InboundClassifier
@@ -45,7 +68,8 @@ public static class InboundClassifier
     public static readonly string[] KnownErps =
     {
         "bling", "tiny", "olist", "omie", "totvs", "protheus", "linx", "microvix", "vhsys", "sankhya", "conta azul", "contaazul",
-        "nibo", "mercos", "sige", "millennium", "winthor", "sap", "bimer", "zeus", "saipos", "ideal soft", "ecosis", "tray", "ideris"
+        "nibo", "mercos", "sige", "millennium", "winthor", "sap", "bimer", "zeus", "saipos", "ideal soft", "ecosis", "tray", "ideris",
+        "datasystem", "hiper", "gdoor", "kmm"
     };
 
     public static string Normalize(string? s)
@@ -82,6 +106,23 @@ public static class InboundClassifier
     private static readonly Regex ReMulti = R(@"\b(multiloja|multi-loja|varias lojas|filiais?|rede de lojas|centralizar|todas as lojas|matriz)\b");
     private static readonly Regex ReImpl = R(@"\b(implanta\w+|migra\w+|prazo|treinamento|quanto tempo|como funciona (a )?(implantacao|instalacao)|instala\w+|importar (os )?dados)\b");
 
+    private const string Problem = @"(problema\w*|dificuldade\w*|dor de cabeca|complicad\w+|trabalho(so)?|retrabalho|bagunc\w+|desorganiz\w+|demor\w+|manual|na mao|erro\w*|errad\w+|falh\w+|trav\w+|lent\w+|perco|perdemos|prejuizo|atras\w+|confus\w+)";
+    private static readonly Regex RePainStockDiv = R(@"\b(fura\w*|furo\w*|divergen\w+|nao (bate|confere|fecha)|estoque (errado|desatualizado|negativo)|(sumi\w*|perd\w+) (de )?(produto|mercadoria|item|peca)s?|diferenca (de|no|do) estoque)\b");
+    private static readonly Regex RePainStock = R(@"\b(estoque|inventario|reposicao|contagem|grade)\b.{0,60}\b" + Problem + @"\b|\b" + Problem + @"\b.{0,60}\b(estoque|inventario|reposicao|contagem)\b|\bgestao de estoque\b");
+    private static readonly Regex RePainFiscal = R(@"\b(fiscal|nota fiscal|notas|nfe|nfce|nf-e|nfc-e|sped|imposto\w*|tributa\w+|emissao)\b.{0,60}\b(" + Problem + @"|rejeit\w+|multa\w*)\b|\brejeicao\b");
+    private static readonly Regex RePainFinancial = R(@"\b(financeiro|fluxo de caixa|conciliacao|boletos?|inadimpl\w+|contas a (pagar|receber)|fechamento de caixa)\b.{0,60}\b" + Problem + @"\b");
+    private static readonly Regex RePainSales = R(@"\b(pdv|caixa|fila|checkout|venda|vendas)\b.{0,60}\b(lent\w+|trav\w+|cai(u|mos)?|fora do ar|demor\w+|erro\w*|falh\w+)\b");
+    private static readonly Regex RePainEcom = R(@"\b(e-?commerce|loja virtual|site|marketplace|mercado livre|shopee|nuvemshop|shopify|vtex)\b.{0,60}\b(integra\w+|sincroni\w+|manual|divergen\w+|desatualiz\w+|" + Problem + @")\b");
+    private static readonly Regex RePainMulti = R(@"\b(varias lojas|filiais?|multiloja|todas as lojas|cada loja|matriz)\b.{0,60}\b(dificil|complicad\w+|bagunc\w+|nao consigo|nao conseguimos|trabalh\w+|descentraliz\w+|" + Problem + @")\b");
+    private static readonly Regex RePainCustomers = R(@"\b(clientes?|fidelidade|recompra)\b.{0,50}\b(some\w*|nao volta\w*|nao sei|nao (temos|tenho) (controle|cadastro)|sem controle|perd\w+)\b|\bnao sei quem (sao|e) (meus |os )?clientes\b");
+    private static readonly Regex RePainSystem = R(@"\b(sistema|programa|erp|datasystem|sistema atual)\b.{0,50}\b(ruim|lent\w+|limitad\w+|antig\w+|trav\w+|caro|complicad\w+|burocratic\w+|fraco|instavel|cai|falha\w*|deixa a desejar|nao atende|nao integra)\b|\bsuporte (ruim|demora\w*|nao responde|pessimo|fraco)\b|\bnao (integra|emite|gera|controla)\b|\b(trocar|mudar) (de )?sistema\b|\bfalta (de )?(integracao|relatorio\w*|recurso\w*)\b");
+    private static readonly Regex RePainGeneric = R(@"\b(dor de cabeca|dificuldade\w*|trabalhoso|retrabalho|perco tempo|perdemos tempo|toma (muito )?tempo|da trabalho|bagunc\w+|complicad\w+|prejuizo|problemas?|reclam\w+)\b");
+    private static readonly Regex RePainStrong = R(@"\b(sempre|toda hora|todo dia|toda semana|todo mes|muito|demais|absurd\w+|prejuizo|perdendo|perdemos|nunca bate|vive|vivo|constante\w*)\b");
+    private static readonly Regex ReBusy = R(@"\b(sem tempo|estou (muito )?(corrido|ocupad\w+|atendendo|na correria|em reuniao|dirigindo)|to (corrido|ocupad\w+|na correria|atendendo)|agora nao (da|posso)|nao (posso|consigo) (falar|conversar) agora|nao e uma boa hora|momento (ruim|corrido)|me (chama|procura|liga|fala) (depois|mais tarde|amanha)|mais tarde|outro (momento|dia)|amanha)\b");
+    private static readonly Regex ReCurious = R(@"\b(como (funciona|e que funciona|fica)|me (explica|conta|fala)|conta mais|queria saber mais|gostaria de saber|pode explicar|quero entender|interessante|me interessa)\b");
+    private static readonly Regex ReInformal = R(@"\b(vc|vcs|blz|tb|tbm|pq|kk+|rs+|uai|opa|valeu|brother|mano|cara|nossa|ne|sussa|bora|slk|tmj)\b|😂|😅|🙏|👍|😉");
+    private static readonly Regex ReTechnical = R(@"\b(api|integracao|sped|wms|rfid|sku|erp|nfe|nf-e|nfce|cest|ncm|cfop|tef|webhook|sincroniz\w+|lote|serie|xml)\b");
+
     private static readonly Dictionary<string, int> Words = new()
     { ["uma"] = 1, ["duas"] = 2, ["dois"] = 2, ["tres"] = 3, ["quatro"] = 4, ["cinco"] = 5, ["seis"] = 6, ["sete"] = 7, ["oito"] = 8, ["nove"] = 9, ["dez"] = 10 };
 
@@ -104,6 +145,19 @@ public static class InboundClassifier
         foreach (var k in KnownErps)
             if (Regex.IsMatch(t, @"\b" + Regex.Escape(k) + @"\b")) { erp = k; break; }
 
+        var satisfiedRaw = ReSatisfied.IsMatch(Regex.Replace(t, @"\btudo bem\s*\?", "")) && !ReNoErp.IsMatch(t);
+        string? pain = RePainStockDiv.IsMatch(t) ? Pain.StockDivergence
+            : RePainFiscal.IsMatch(t) ? Pain.Fiscal
+            : RePainFinancial.IsMatch(t) ? Pain.Financial
+            : RePainSales.IsMatch(t) ? Pain.Sales
+            : RePainEcom.IsMatch(t) ? Pain.Ecommerce
+            : RePainMulti.IsMatch(t) ? Pain.Multistore
+            : RePainCustomers.IsMatch(t) ? Pain.Customers
+            : RePainStock.IsMatch(t) ? Pain.Stock
+            : RePainSystem.IsMatch(t) ? Pain.System
+            : !satisfiedRaw && !refusal && !optOut && RePainGeneric.IsMatch(t) ? Pain.Other : null;
+        var painStrong = pain != null && RePainStrong.IsMatch(t);
+
         return new InboundSignals
         {
             Normalized = t,
@@ -116,7 +170,7 @@ public static class InboundClassifier
             Yes = yes,
             No = no,
             Maybe = ReMaybe.IsMatch(t),
-            Satisfied = ReSatisfied.IsMatch(Regex.Replace(t, @"\btudo bem\s*\?", "")) && !ReNoErp.IsMatch(t),
+            Satisfied = satisfiedRaw && (pain == null || pain == Pain.Other),
             Angry = ReAngry.IsMatch(t),
             OutOfIcp = ReOutOfIcp.IsMatch(t),
             AsksQuestion = ReQuestion.IsMatch(t) && !ReIdentity.IsMatch(t),
@@ -128,12 +182,20 @@ public static class InboundClassifier
             TopicFiscal = ReFiscal.IsMatch(t),
             TopicStock = ReStock.IsMatch(t),
             TopicMultistore = ReMulti.IsMatch(t),
-            TopicImplementation = ReImpl.IsMatch(t)
+            TopicImplementation = ReImpl.IsMatch(t),
+            PainCategory = pain,
+            PainIntensity = pain == null ? 0 : painStrong ? 2 : 1,
+            Dissatisfied = RePainSystem.IsMatch(t),
+            Busy = ReBusy.IsMatch(t),
+            Curious = ReCurious.IsMatch(t),
+            Informal = ReInformal.IsMatch(raw ?? "") || ReInformal.IsMatch(t),
+            Technical = ReTechnical.IsMatch(t),
+            WordCount = wordCount
         };
     }
 }
 
-public record Decision(RobertaAction Action, string Reason, bool NeedsLlm, string? Topic = null);
+public record Decision(RobertaAction Action, string Reason, bool NeedsLlm, string? Topic = null, string? HandoffKind = null);
 
 public static class ConversationStateRules
 {
@@ -150,24 +212,42 @@ public static class ConversationStateRules
     };
 
     /// <summary>Updates the persisted state with what the inbound message revealed. Mutates and returns the same instance.</summary>
-    public static ConversationState Apply(ConversationState s, InboundSignals sig, string rawText)
+    public static ConversationState Apply(ConversationState s, InboundSignals sig, string rawText, bool viaAudio = false, TimeSpan? replyDelay = null)
     {
         var asked = Set(s.QuestionsAsked); var answered = Set(s.QuestionsAnswered);
-        s.TurnCount++; s.LastContactAt = DateTime.UtcNow;
+        s.TurnCount++; s.LastContactAt = DateTime.UtcNow; s.LastInboundAt = s.LastContactAt;
+        s.InboundWords += sig.WordCount;
+        if (viaAudio) s.ClientSentAudio = true;
+        var lastTopic = TopicOf(s.LastAction);
+        var storeChanged = sig.StoreCount.HasValue && sig.StoreCount != s.StoreCount;
+        var spontaneous = (sig.ErpMention != null && lastTopic != TopicErp) || (sig.StoreCount.HasValue && lastTopic != TopicStores) || (sig.PainCategory != null && lastTopic != TopicPain);
 
         if (sig.OptOut) { s.OptOut = true; s.Stage = ConvStage.Encerrada; }
         if (sig.HumanRequest) s.HumanRequested = true;
         if (sig.Price) s.PriceDiscussed = true;
 
         if (sig.ErpMention != null && s.CurrentErp == null) { s.CurrentErp = sig.ErpMention; answered.Add(TopicErp); }
+        else if (lastTopic == TopicErp && s.CurrentErp == null && CleanErp(rawText, sig) is { } erpName) s.CurrentErp = erpName;
         if (sig.NoErp) { s.CurrentErp ??= "nenhum (planilha/manual)"; answered.Add(TopicErp); }
         if (sig.StoreCount.HasValue) { s.StoreCount = sig.StoreCount; answered.Add(TopicStores); }
 
         // The reply to the question we asked counts as an answer, even a negative one: it must never be asked again.
-        var lastTopic = TopicOf(s.LastAction);
         if (lastTopic != null && !sig.OptOut) answered.Add(lastTopic);
-        if (lastTopic == TopicPain && !sig.Yes && !sig.No && !sig.Satisfied && !sig.Maybe && !sig.Refusal && rawText.Trim().Length >= 5)
+        var detail = !sig.Yes && !sig.No && !sig.Satisfied && !sig.Maybe && !sig.Refusal && rawText.Trim().Length >= 5;
+        if (sig.PainCategory != null)
+        {
+            answered.Add(TopicPain);
+            if (s.MainPain == null || sig.PainCategory != Pain.Other) s.MainPain = s.MainPain != null && s.MainPain != Pain.Other && sig.PainCategory == Pain.Other ? s.MainPain : sig.PainCategory;
+            s.PainIntensity = Math.Max(s.PainIntensity, sig.PainIntensity);
+            if (!(s.PainPoints ?? "").Contains(rawText.Trim(), StringComparison.OrdinalIgnoreCase)) s.PainPoints = Append(s.PainPoints, rawText.Trim(), 900);
+            // A pain voiced after "everything is fine" cancels the satisfied state.
+            s.SatisfiedWithCurrent = false; s.NegativeStreak = 0;
+        }
+        else if ((lastTopic == TopicPain || s.LastAction == nameof(RobertaAction.DeepenPain)) && detail)
+        {
             s.PainPoints = Append(s.PainPoints, rawText.Trim(), 900);
+            if (lastTopic == TopicPain) { s.MainPain ??= Pain.Other; s.PainIntensity = Math.Max(s.PainIntensity, 1); }
+        }
 
         if (s.LastAction == nameof(RobertaAction.OfferDemo))
         {
@@ -182,28 +262,67 @@ public static class ConversationStateRules
         else if (!sig.Maybe && !sig.Short) s.NegativeStreak = 0;
 
         if (sig.Refusal) s.Objections = Append(s.Objections, "recusa explícita", 900);
+        if (sig.Busy && !(s.Objections ?? "").Contains("sem tempo")) s.Objections = Append(s.Objections, "sem tempo agora", 900);
         s.InterestLevel = sig.Refusal || sig.OptOut || sig.Angry ? 1
             : sig.DemoRequest || sig.HumanRequest || sig.Discount ? 3
             : sig.Price || (sig.Yes && s.LastAction != null) ? Math.Max(s.InterestLevel, 2)
             : s.InterestLevel;
 
+        FeelingRules.Update(s, sig, replyDelay, spontaneous, storeChanged);
+        if (!(sig.Refusal || sig.OptOut || sig.Angry)) s.InterestLevel = Math.Max(s.InterestLevel, s.Temperature >= 75 ? 3 : s.Temperature >= 45 ? 2 : 0);
+
         s.QuestionsAsked = Join(asked); s.QuestionsAnswered = Join(answered);
         return s;
     }
 
+    private static readonly Regex ReErpLead = new(@"^(o|a|um|uma|uso|usamos|usa|e|eh|aqui|sistema|o sistema|nosso|e o|e a|usando|temos|tenho)\s+", RegexOptions.Compiled);
+    /// <summary>Name of the system when the lead answered the ERP question with an unknown name (e.g. "O Datasystem").</summary>
+    private static string? CleanErp(string raw, InboundSignals sig)
+    {
+        if (sig.Yes || sig.No || sig.Maybe || sig.Satisfied || sig.Refusal || sig.AsksQuestion || sig.Identity || sig.WordCount is 0 or > 4) return null;
+        var t = sig.Normalized;
+        for (var i = 0; i < 3; i++) t = ReErpLead.Replace(t, "");
+        t = Regex.Replace(t, @"[^a-z0-9 ]", "").Trim();
+        return t.Length is >= 2 and <= 40 ? t : null;
+    }
+
     /// <summary>Registers an action as sent/proposed so the engine never repeats it.</summary>
-    public static void RecordAction(ConversationState s, RobertaAction a)
+    public static void RecordAction(ConversationState s, RobertaAction a, string? reply = null, string? format = null, string? handoffKind = null)
     {
         s.LastAction = a.ToString();
         var asked = Set(s.QuestionsAsked);
         var t = TopicOf(a.ToString());
         if (t != null) asked.Add(t);
         if (a == RobertaAction.OfferDemo) s.DemoOffered = true;
-        if (a == RobertaAction.HandoffToSeller) s.Stage = ConvStage.Handoff;
+        if (a == RobertaAction.DeepenPain) s.PainDepth++;
+        if (a == RobertaAction.PitchFeature)
+        {
+            s.PitchCount++;
+            var angle = ProductCatalog.Next(s.MainPain, s.FeaturesPresented);
+            s.FeaturesPresented = Join(Set(s.FeaturesPresented).Append(angle.Id));
+        }
+        if (a == RobertaAction.HandoffToSeller) { s.Stage = ConvStage.Handoff; s.HandoffKind = handoffKind ?? s.HandoffKind ?? "outro"; }
         else if (a is RobertaAction.CloseConversation or RobertaAction.DoNotContact) s.Stage = ConvStage.Encerrada;
         else if (a == RobertaAction.OfferDemo) s.Stage = ConvStage.Demo;
-        else if (a is RobertaAction.ExplainFeature or RobertaAction.ExplainMultistore or RobertaAction.ExplainStockControl or RobertaAction.ExplainPricing) s.Stage = ConvStage.Apresentacao;
-        else if (t != null) s.Stage = ConvStage.Qualificacao;
+        else if (a is RobertaAction.ExplainFeature or RobertaAction.ExplainMultistore or RobertaAction.ExplainStockControl or RobertaAction.ExplainPricing or RobertaAction.PitchFeature) s.Stage = ConvStage.Apresentacao;
+        else if (t != null || a == RobertaAction.DeepenPain) s.Stage = ConvStage.Qualificacao;
+        s.CurrentGoal = a switch
+        {
+            RobertaAction.AskCurrentERP => "descobrir_sistema", RobertaAction.AskStoreCount => "descobrir_porte", RobertaAction.AskPainPoint => "descobrir_dor",
+            RobertaAction.DeepenPain => "aprofundar_dor", RobertaAction.PitchFeature => "conectar_solucao", RobertaAction.OfferDemo => "gerar_demo",
+            RobertaAction.HandoffToSeller => "transferir", RobertaAction.RespectBusy => "respeitar_tempo", RobertaAction.FollowUp => "retomar",
+            RobertaAction.CloseConversation or RobertaAction.DoNotContact => "encerrar", _ => "responder_duvida"
+        };
+        if (format != null)
+        {
+            s.LastFormat = format;
+            if (format != "text") s.AudioSentCount++;
+        }
+        if (!string.IsNullOrWhiteSpace(reply))
+        {
+            var q = Regex.Split(reply, @"(?<=[.!?])\s+").LastOrDefault(x => x.Contains('?'));
+            s.LastQuestion = q?.Trim().Truncate(290);
+        }
         s.QuestionsAsked = Join(asked);
     }
 
@@ -216,8 +335,10 @@ public static class ConversationStateRules
 
 public static class CommercialDecisionEngine
 {
-    public const int MaxTurns = 8;
+    public const int MaxTurns = 14;
     public const int BigNetwork = 10;
+
+    private static Decision Handoff(string reason, string kind) => new(RobertaAction.HandoffToSeller, reason, false, null, kind);
 
     /// <summary>Deterministic next step. <paramref name="kbMatch"/> = the knowledge base has something relevant to the message; <paramref name="kbPricing"/> = it has pricing info.</summary>
     public static Decision Decide(ConversationState s, InboundSignals sig, bool kbMatch, bool kbPricing)
@@ -225,19 +346,23 @@ public static class CommercialDecisionEngine
         if (s.OptOut || sig.OptOut) return new(RobertaAction.DoNotContact, "Lead pediu para não receber mais contato.", false);
         if (sig.Refusal && !sig.AsksQuestion || sig.Refusal && sig.No) return new(RobertaAction.CloseConversation, "Recusa clara.", false);
         if (sig.OutOfIcp) return new(RobertaAction.CloseConversation, "Lead fora do perfil (ICP).", false);
-        if (sig.Angry) return new(RobertaAction.HandoffToSeller, "Lead irritado/reclamação: atendimento humano.", false);
-        if (sig.HumanRequest || s.HumanRequested) return new(RobertaAction.HandoffToSeller, "Lead pediu atendimento humano.", false);
-        if (sig.Discount) return new(RobertaAction.HandoffToSeller, "Negociação/desconto: humano.", false);
-        if (sig.DemoRequest || s.DemoAccepted) return new(RobertaAction.HandoffToSeller, "Lead quer/aceitou demonstração.", false);
-        if (s.StoreCount >= BigNetwork) return new(RobertaAction.HandoffToSeller, $"Rede com {s.StoreCount} lojas: prioridade para vendedor.", false);
+        if (sig.Angry) return Handoff("Lead irritado/reclamação: atendimento humano.", "irritado");
+        if (sig.HumanRequest || s.HumanRequested) return Handoff("Lead pediu atendimento humano.", "humano");
+        if (sig.Discount) return Handoff("Negociação/desconto: humano.", "negociacao");
+        if (sig.DemoRequest || s.DemoAccepted) return Handoff("Lead quer/aceitou demonstração.", "demo");
+        if (s.StoreCount >= BigNetwork) return Handoff($"Rede com {s.StoreCount} lojas: prioridade para vendedor.", "rede");
         if (sig.Price)
             return kbPricing && !s.PriceDiscussedBefore() ? new(RobertaAction.ExplainPricing, "Preço pedido e há informação na base.", true)
-                : new(RobertaAction.HandoffToSeller, "Preço/proposta: humano.", false);
-        if (s.TurnCount > MaxTurns) return new(RobertaAction.HandoffToSeller, "Limite de turnos automáticos atingido.", false);
+                : Handoff("Preço/proposta: humano.", "preco");
+        if (s.TurnCount > MaxTurns) return Handoff("Limite de turnos automáticos atingido.", s.MainPain != null ? "maduro" : "outro");
+
+        if (sig.Busy)
+            return s.LastAction == nameof(RobertaAction.RespectBusy) ? new(RobertaAction.CloseConversation, "Segue sem tempo: encerrar sem pressão.", false)
+                : new(RobertaAction.RespectBusy, "Lead sem tempo agora: resposta curta, sem perguntas.", true);
 
         if (sig.AsksQuestion && !sig.Yes && !sig.No)
         {
-            if (!kbMatch) return new(RobertaAction.HandoffToSeller, "Pergunta fora da base de conhecimento.", false);
+            if (!kbMatch) return Handoff("Pergunta fora da base de conhecimento.", "duvida");
             var a = sig.TopicStock ? RobertaAction.ExplainStockControl : sig.TopicMultistore ? RobertaAction.ExplainMultistore : RobertaAction.ExplainFeature;
             return new(a, "Lead fez uma pergunta; responder só com a base.", true);
         }
@@ -249,12 +374,25 @@ public static class CommercialDecisionEngine
 
         var asked = ConversationStateRules.Set(s.QuestionsAsked); var answered = ConversationStateRules.Set(s.QuestionsAnswered);
         bool Done(string t) => asked.Contains(t) || answered.Contains(t);
+
+        // Consultative selling: a stated pain is acknowledged, probed and connected to the product before anything else.
+        var painLed = s.MainPain != null && !s.DemoOffered;
+        if (painLed && s.PainDepth == 0) return new(RobertaAction.DeepenPain, $"Dor declarada ({s.MainPain}): reconhecer e aprofundar antes de avançar.", true);
+        if (painLed && s.PitchCount == 0) return new(RobertaAction.PitchFeature, $"Dor aprofundada ({s.MainPain}): conectar a dor à solução.", true);
+
         if (!Done(ConversationStateRules.TopicErp) && s.CurrentErp == null) return new(RobertaAction.AskCurrentERP, "Descobrir sistema atual.", true, ConversationStateRules.TopicErp);
         if (!Done(ConversationStateRules.TopicStores) && s.StoreCount == null) return new(RobertaAction.AskStoreCount, "Descobrir porte (lojas).", true, ConversationStateRules.TopicStores);
+
+        if (painLed)
+        {
+            var interested = sig.Yes || sig.Curious || s.Temperature >= 55;
+            return !interested && s.PitchCount < 2 ? new(RobertaAction.PitchFeature, "Interesse ainda morno: apresentar outro ângulo relacionado à dor.", true)
+                : new(RobertaAction.OfferDemo, "Dor conectada à solução e interesse presente: oferecer demonstração.", true);
+        }
         if (!Done(ConversationStateRules.TopicPain) && string.IsNullOrWhiteSpace(s.PainPoints)) return new(RobertaAction.AskPainPoint, "Entender a principal dor.", true, ConversationStateRules.TopicPain);
 
         if (!s.DemoOffered) return new(RobertaAction.OfferDemo, "Qualificação concluída: oferecer demonstração.", true);
-        if (s.InterestLevel >= 2 || sig.Yes) return new(RobertaAction.HandoffToSeller, "Interesse confirmado após demo oferecida.", false);
+        if ((s.InterestLevel >= 2 || sig.Yes) && !sig.No && !(s.Objections ?? "").Contains("recusou demonstração")) return Handoff("Interesse confirmado após demo oferecida.", "maduro");
         return new(RobertaAction.CloseConversation, "Sem avanço após qualificação e demo oferecida.", false);
     }
 

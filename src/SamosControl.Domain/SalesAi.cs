@@ -35,6 +35,33 @@ public class ConversationState : BaseEntity
     [MaxLength(40)] public string? NextAction { get; set; }
     [MaxLength(1500)] public string? Summary { get; set; }
     public DateTime? LastContactAt { get; set; }
+
+    // ---- Feeling comercial (Roberta 3.0) ----
+    /// <summary>0-100, computed deterministically from the lead's signals.</summary>
+    public int Temperature { get; set; }
+    /// <summary>baixa | media | alta.</summary>
+    [MaxLength(10)] public string BuyingIntent { get; set; } = "baixa";
+    /// <summary>baixo | medio | alto.</summary>
+    [MaxLength(10)] public string Engagement { get; set; } = "baixo";
+    /// <summary>Pain category code (e.g. estoque_divergencia, fiscal, sistema_atual).</summary>
+    [MaxLength(40)] public string? MainPain { get; set; }
+    /// <summary>0 none, 1 mentioned, 2 strong/recurrent.</summary>
+    public int PainIntensity { get; set; }
+    public int PainDepth { get; set; }
+    public int PitchCount { get; set; }
+    [MaxLength(40)] public string? CurrentGoal { get; set; }
+    /// <summary>Comma separated tags: objetivo, comunicativo, informal, tecnico, apressado.</summary>
+    [MaxLength(80)] public string? ClientStyle { get; set; }
+    [MaxLength(20)] public string? LastFormat { get; set; }
+    public int AudioSentCount { get; set; }
+    public bool ClientSentAudio { get; set; }
+    [MaxLength(300)] public string? FeaturesPresented { get; set; }
+    public bool ReadyForHandoff { get; set; }
+    [MaxLength(40)] public string? HandoffKind { get; set; }
+    [MaxLength(300)] public string? LastQuestion { get; set; }
+    public int FollowUpCount { get; set; }
+    public int InboundWords { get; set; }
+    public DateTime? LastInboundAt { get; set; }
 }
 
 public class PromptVersion : BaseEntity
@@ -61,6 +88,8 @@ public class SdrSuggestion : BaseEntity
     [MaxLength(40)] public string Action { get; set; } = "";
     [MaxLength(2000)] public string? Reply { get; set; }
     [MaxLength(2000)] public string? EditedReply { get; set; }
+    /// <summary>text | audio | audio_text (decided by the format advisor).</summary>
+    [MaxLength(20)] public string? Format { get; set; }
     public bool ValidatorOk { get; set; }
     [MaxLength(1000)] public string? ValidatorIssues { get; set; }
     public string? ContextJson { get; set; }

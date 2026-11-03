@@ -79,7 +79,7 @@ public class RobertaEngineTests
     [Theory]
     [InlineData("Oi, tudo bem?", "AskCurrentERP")]
     [InlineData("Quem é você?", "AskCurrentERP")]
-    [InlineData("Oi|Uso o Bling|Tenho 2 lojas|Perde muito tempo conferindo estoque", "AskCurrentERP,AskStoreCount,AskPainPoint,OfferDemo")]
+    [InlineData("Oi|Uso o Bling|Tenho 2 lojas|Perde muito tempo conferindo estoque", "AskCurrentERP,AskStoreCount,AskPainPoint,DeepenPain")]
     [InlineData("Oi|Uso Tiny|Tenho 1 loja|Não|Não", "AskCurrentERP,AskStoreCount,AskPainPoint,OfferDemo,CloseConversation")]
     [InlineData("Oi|Uso Bling e funciona bem", "AskCurrentERP,OfferDemo")]
     [InlineData("Oi|Uso Bling e funciona bem|Não precisa, obrigado", "AskCurrentERP,OfferDemo,CloseConversation")]
@@ -103,7 +103,7 @@ public class RobertaEngineTests
     [InlineData("Oi|Tenho interesse", "AskCurrentERP,AskStoreCount")]
     [InlineData("Oi|Eu uso o Linx aqui na loja e tenho cinco lojas", "AskCurrentERP,AskPainPoint")]
     [InlineData("Oi|Uso o Omie e atende bem", "AskCurrentERP,OfferDemo")]
-    [InlineData("Oi|Uso Bling|3 lojas|Ocupa tempo no estoque|Sim, pode", "AskCurrentERP,AskStoreCount,AskPainPoint,OfferDemo,HandoffToSeller")]
+    [InlineData("Oi|Uso Bling|3 lojas|Ocupa tempo no estoque|Sim, pode", "AskCurrentERP,AskStoreCount,AskPainPoint,DeepenPain,PitchFeature")]
     [InlineData("Oi|Não uso sistema, uso planilha", "AskCurrentERP,AskStoreCount")]
     [InlineData("Oi|Uso Bling|Quanto custa o plano?", "AskCurrentERP,AskStoreCount,HandoffToSeller")]
     [InlineData("Quero agendar uma demo", "HandoffToSeller")]
@@ -133,7 +133,7 @@ public class RobertaEngineTests
     }
 
     [Fact]
-    public void Turn_cap_forces_handoff() => Assert.Equal("HandoffToSeller", Run("Oi", seed: s => s.TurnCount = 8)[0]);
+    public void Turn_cap_forces_handoff() => Assert.Equal("HandoffToSeller", Run("Oi", seed: s => s.TurnCount = CommercialDecisionEngine.MaxTurns)[0]);
 
     [Fact]
     public void Same_question_is_never_asked_twice_over_long_conversation()
@@ -152,7 +152,7 @@ public class RobertaValidatorTests
     [InlineData("Qual sistema vocês usam hoje para vender e controlar o estoque?", RobertaAction.AskCurrentERP)]
     [InlineData("Quantas lojas vocês têm hoje?", RobertaAction.AskStoreCount)]
     [InlineData("O que mais toma tempo na rotina da loja?", RobertaAction.AskPainPoint)]
-    [InlineData("Que bom! Se um dia quiser conhecer algo diferente, posso te mostrar rapidinho. Topa uma demonstração sem compromisso?", RobertaAction.OfferDemo)]
+    [InlineData("Show! Se um dia quiser conhecer algo diferente, posso te mostrar rapidinho. Topa uma demonstração sem compromisso?", RobertaAction.OfferDemo)]
     [InlineData("Obrigada pelo retorno, qualquer coisa estamos por aqui.", RobertaAction.CloseConversation)]
     public void Good_replies_pass(string reply, RobertaAction a) => Assert.True(V(reply, a).Ok, string.Join(",", V(reply, a).Issues));
 

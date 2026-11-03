@@ -976,6 +976,21 @@ namespace SamosControl.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("AudioSentCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("BuyingIntent")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<bool>("ClientSentAudio")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ClientStyle")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -983,14 +998,37 @@ namespace SamosControl.Infrastructure.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
+                    b.Property<string>("CurrentGoal")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<bool>("DemoAccepted")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("DemoOffered")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Engagement")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("FeaturesPresented")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<int>("FollowUpCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("HandoffKind")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<bool>("HumanRequested")
                         .HasColumnType("boolean");
+
+                    b.Property<int>("InboundWords")
+                        .HasColumnType("integer");
 
                     b.Property<int>("InterestLevel")
                         .HasColumnType("integer");
@@ -1002,8 +1040,23 @@ namespace SamosControl.Infrastructure.Migrations
                     b.Property<DateTime?>("LastContactAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("LastFormat")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("LastInboundAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastQuestion")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
                     b.Property<int>("LeadId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("MainPain")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
 
                     b.Property<int>("NegativeStreak")
                         .HasColumnType("integer");
@@ -1019,9 +1072,18 @@ namespace SamosControl.Infrastructure.Migrations
                     b.Property<bool>("OptOut")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("PainDepth")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PainIntensity")
+                        .HasColumnType("integer");
+
                     b.Property<string>("PainPoints")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("PitchCount")
+                        .HasColumnType("integer");
 
                     b.Property<bool>("PriceDiscussed")
                         .HasColumnType("boolean");
@@ -1035,6 +1097,9 @@ namespace SamosControl.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
+
+                    b.Property<bool>("ReadyForHandoff")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("SatisfiedWithCurrent")
                         .HasColumnType("boolean");
@@ -1054,6 +1119,9 @@ namespace SamosControl.Infrastructure.Migrations
                     b.Property<string>("Summary")
                         .HasMaxLength(1500)
                         .HasColumnType("character varying(1500)");
+
+                    b.Property<int>("Temperature")
+                        .HasColumnType("integer");
 
                     b.Property<int>("TurnCount")
                         .HasColumnType("integer");
@@ -2150,6 +2218,10 @@ namespace SamosControl.Infrastructure.Migrations
                     b.Property<string>("EditedReply")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Format")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("InboundText")
                         .IsRequired()

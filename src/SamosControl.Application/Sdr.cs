@@ -154,7 +154,7 @@ public class SdrService
     { _db = db; _wa = wa; _ai = ai; _kb = kb; _notify = notify; _log = log; _roberta = roberta; }
 
     /// <summary>Carries out a decided action (Auto mode, or a human-approved suggestion in Review mode).</summary>
-    public async Task ExecuteAsync(SdrCampaign c, SdrContact contact, Lead lead, RobertaAction action, string? reply, string lastMessage, string reason, bool viaAudio, bool humanize, CancellationToken ct = default)
+    public async Task ExecuteAsync(SdrCampaign c, SdrContact contact, Lead lead, RobertaAction action, string? reply, string lastMessage, string reason, bool viaAudio, bool humanize, CancellationToken ct = default, string? format = null)
     {
         switch (action)
         {
@@ -176,7 +176,19 @@ public class SdrService
         contact.AiTurns++;
         await _db.SaveChangesAsync(ct);
         if (humanize) await Task.Delay(Random.Shared.Next(4000, 9000), ct);
-        try { await _wa.SendReplyAsync(c.SellerId, contact.Phone, reply, viaAudio, null, true, ct); }
+        var fmt = FormatAdvisor.Parse(format ?? (viaAudio ? "audio" : "text"));
+        var (spoken, companion) = FormatAdvisor.Split(reply);
+        try
+        {
+            if (fmt == ReplyFormat.Text) { await _wa.SendReplyAsync(c.SellerId, contact.Phone, FormatAdvisor.Plain(reply), false, null, true, ct); return; }
+            var sent = await _wa.SendReplyAsync(c.SellerId, contact.Phone, spoken, true, null, true, ct);
+            // The companion text is only needed when the voice note really went out; on fallback the spoken text already is the text.
+            if (fmt == ReplyFormat.AudioPlusText && companion != null && sent.Type == "audio")
+            {
+                await Task.Delay(humanize ? 1500 : 0, ct);
+                await _wa.SendReplyAsync(c.SellerId, contact.Phone, companion, false, null, true, ct);
+            }
+        }
         catch (Exception ex) { _log.LogWarning(ex, "SDR: falha ao enviar resposta"); }
     }
 
@@ -196,7 +208,7 @@ public class SdrService
         s.EditedReply = decision == "edit" ? text : null;
         s.Status = decision == "edit" ? SuggestionStatus.Editada : SuggestionStatus.Aprovada;
         await _db.SaveChangesAsync(ct);
-        await ExecuteAsync(c, contact, contact.Lead!, action, text, s.InboundText, "Aprovado em revisão", false, false, ct);
+        await ExecuteAsync(c, contact, contact.Lead!, action, text, s.InboundText, "Aprovado em revisão", false, false, ct, s.Format);
         return "Enviado.";
     }
 
@@ -327,7 +339,14 @@ public class SdrService
         {
             x.Stage = SdrStage.Encerrado; x.NextActionAt = null; await _db.SaveChangesAsync(ct); return false;
         }
-        try { await SendAsync(c, x.Phone, Render(string.IsNullOrWhiteSpace(c.FollowUpText) ? DefaultFollowUp : c.FollowUpText, x.Lead!), ct); }
+        string? text = null;
+        if (c.Mode == SdrMode.Auto)
+        {
+            // Contextual follow-up (resumes the pain the lead voiced); campaign template remains the fallback.
+            var hist = await LoadHistoryAsync(x.Phone, c.SellerId, ct);
+            text = await _roberta.FollowUpTextAsync(x.Lead!, hist, ct);
+        }
+        try { await SendAsync(c, x.Phone, text ?? Render(string.IsNullOrWhiteSpace(c.FollowUpText) ? DefaultFollowUp : c.FollowUpText, x.Lead!), ct); }
         catch (Exception ex) { x.Stage = SdrStage.Erro; x.Error = ex.Message.Truncate(290); Throttle(c); await _db.SaveChangesAsync(ct); return false; }
         x.Attempts++; x.LastSentAt = DateTime.UtcNow; x.NextActionAt = DateTime.UtcNow.AddHours(c.FollowUpHours);
         Throttle(c);
@@ -363,7 +382,10 @@ public class SdrService
 
             // Roberta 2.0: state → deterministic decision → LLM phrases → validator. The mode decides what is done with the result.
             var hist = await LoadHistoryAsync(contact.Phone, c.SellerId, ct);
-            var p = await _roberta.ProposeAsync(contact, lead, text, hist, ct);
+            var lastOut = await _db.WhatsAppMessages.Where(m => m.Conversation!.SellerId == sellerId && m.Conversation.Phone.EndsWith(key!) && m.Direction == MessageDirection.Out)
+                .OrderByDescending(m => m.Id).Select(m => new { m.Type, m.Timestamp }).FirstOrDefaultAsync(ct);
+            var delay = lastOut == null ? (TimeSpan?)null : DateTime.UtcNow - lastOut.Timestamp;
+            var p = await _roberta.ProposeAsync(contact, lead, text, hist, viaAudio, delay, _wa.VoiceAvailable, lastOut?.Type == "audio", ct);
             var sug = p.Suggestion;
             contact.Score = Math.Clamp(p.State.InterestLevel * 33, 0, 100);
             contact.Summary = p.State.Summary;
@@ -385,7 +407,7 @@ public class SdrService
             }
             sug.Status = SuggestionStatus.Enviada;
             await _db.SaveChangesAsync(ct);
-            await ExecuteAsync(c, contact, lead, p.Decision.Action, p.Reply, text, p.Decision.Reason, viaAudio, true, ct);
+            await ExecuteAsync(c, contact, lead, p.Decision.Action, p.Reply, text, p.Decision.Reason, viaAudio, true, ct, sug.Format);
         }
         finally { gate.Release(); }
     }
@@ -446,10 +468,9 @@ public class SdrService
     public async Task HandoffAsync(SdrCampaign c, SdrContact contact, Lead lead, string lastMessage, string reason, CancellationToken ct = default)
     {
         var seller = c.SellerId.HasValue ? await _db.Sellers.FindAsync(new object[] { c.SellerId.Value }, ct) : await PickSellerAsync(lead, ct);
-        var who = seller == null ? "um especialista da nossa equipe" : seller.Name.Split(' ')[0];
-        await SafeSendAsync(c, contact.Phone, c.SellerId.HasValue
-            ? "Perfeito! Vou passar a conversa para um especialista da nossa equipe, que continua por aqui com você em instantes."
-            : $"Perfeito! Vou chamar {who}, da nossa equipe, para te passar os detalhes. Ele(a) já entra em contato com você.", ct);
+        var who = seller == null || c.SellerId.HasValue ? null : seller.Name.Split(' ')[0];
+        var st = await _db.ConversationStates.AsNoTracking().FirstOrDefaultAsync(x => x.LeadId == lead.Id, ct);
+        await SafeSendAsync(c, contact.Phone, HandoffMessages.Build(st?.HandoffKind, st?.MainPain, who, lead.Id), ct);
 
         contact.Stage = SdrStage.Repassado; contact.HandoffSellerId = seller?.Id; contact.HandoffAt = DateTime.UtcNow.AddSeconds(5); contact.NextActionAt = null;
         if (seller != null) { lead.SellerId = seller.Id; if (seller.UserId.HasValue) lead.AssignedUserId = seller.UserId; }

@@ -239,6 +239,9 @@ public class WhatsAppService
         catch (Exception ex) { _log.LogWarning(ex, "Falha ao transcrever áudio recebido"); return null; }
     }
 
+    /// <summary>True when ElevenLabs voice replies are configured and enabled.</summary>
+    public bool VoiceAvailable => _voice.VoiceRepliesEnabled;
+
     /// <summary>Responde ao cliente; em áudio (voz da ElevenLabs) quando asAudio, com fallback para texto.</summary>
     public async Task<WhatsAppMessage> SendReplyAsync(int? sellerId, string phone, string text, bool asAudio, int? userId = null, bool fromAgent = false, CancellationToken ct = default)
     {
