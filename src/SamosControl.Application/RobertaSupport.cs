@@ -18,11 +18,10 @@ public record ValidationResult(bool Ok, List<string> Issues, Dictionary<string, 
 public static class ResponseValidator
 {
     public const int MaxChars = 400, MaxSentences = 3, MaxCharsRich = 800, MaxSentencesRich = 7;
-    private static readonly Regex AiDisclosure = new(@"\b(sou|somos|era|sera)\b[^.!?]{0,30}\b(ia|bot|robo|chatbot|inteligencia artificial|assistente virtual)\b|assistente virtual|inteligencia artificial|\bchatbot\b", RegexOptions.Compiled);
     private static readonly Regex BannedOpener = new(@"^\W*(entendi,? faz sentido|que bom)\b", RegexOptions.Compiled);
     /// <summary>First two words of a message, used to stop Roberta from opening every message the same way.</summary>
     public static string Opener(string s) => string.Join(' ', Regex.Split(InboundClassifier.Normalize(s), @"[^a-z0-9]+").Where(w => w.Length > 0).Take(2));
-    private static readonly string[] Forbidden = { "garanto", "garantimos", "100%", "gratis", "gratuito", "sem custo", "desconto", "promocao", "sou humano", "sou uma pessoa", "sou o dono" };
+    private static readonly string[] Forbidden = { "garanto", "garantimos", "100%", "gratis", "gratuito", "sem custo", "desconto", "promocao", "sou humano", "sou humana", "sou uma pessoa", "sou o dono", "pessoa de verdade", "nao sou um robo", "nao sou robo", "nao sou ia", "carne e osso", "na minha experiencia", "quando eu trabalhava" };
     private static readonly Regex Num = new(@"R\$\s*\d[\d.,]*|\d[\d.,]*\s*%|\b\d{2,}[\d.,]*\b", RegexOptions.Compiled);
     private static readonly Regex Url = new(@"https?://\S+|www\.\S+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
@@ -61,7 +60,7 @@ public static class ResponseValidator
         var q = r.Count(ch => ch == '?');
         if (q > 1) issues.Add("multiple_questions");
 
-        var noQuestion = c.Action is RobertaAction.CloseConversation or RobertaAction.DoNotContact or RobertaAction.HandoffToSeller or RobertaAction.RespectBusy;
+        var noQuestion = c.Action is RobertaAction.CloseConversation or RobertaAction.DoNotContact         or RobertaAction.HandoffToSeller or RobertaAction.RespectBusy or RobertaAction.PauseConversation;
         var mustAsk = c.Action is RobertaAction.AskCurrentERP or RobertaAction.AskStoreCount or RobertaAction.AskPainPoint or RobertaAction.DeepenPain;
         if (noQuestion && q > 0) issues.Add("question_not_allowed");
         if (mustAsk && q != 1) issues.Add("action_requires_one_question");
@@ -69,12 +68,11 @@ public static class ResponseValidator
         // Topic checks only protect the qualification questions; deepening a pain is allowed to probe the pain again.
         var qt = QuestionTopic(r);
         var expected = ConversationStateRules.TopicOf(c.Action.ToString());
-        var painProbe = c.Action is RobertaAction.DeepenPain or RobertaAction.PitchFeature or RobertaAction.OfferDemo || c.Action.ToString().StartsWith("Explain");
+        var painProbe = c.Action is not (RobertaAction.AskCurrentERP or RobertaAction.AskStoreCount or RobertaAction.AskPainPoint);
         if (qt != null && qt != expected && c.AskedTopics.Contains(qt) && !(painProbe && qt == ConversationStateRules.TopicPain)) issues.Add("repeated_question:" + qt);
         if (qt != null && !mustAsk && !(painProbe && qt == ConversationStateRules.TopicPain)) issues.Add("off_action_question:" + qt);
         if (qt != null && mustAsk && c.Action != RobertaAction.DeepenPain && qt != expected) issues.Add("question_topic_mismatch:" + qt);
 
-        if (AiDisclosure.IsMatch(norm)) issues.Add("ai_disclosure");
         if (BannedOpener.IsMatch(norm)) issues.Add("banned_opener");
         var opener = Opener(r);
         if (opener.Length > 0 && c.RecentOutgoing.Any(o => Opener(o) == opener)) issues.Add("repeated_opener");
@@ -191,17 +189,20 @@ public class PromptService
 {
     public const string Name = "roberta";
     public const string DefaultContent =
-        "Você é a Roberta, da Samos, conversando por WhatsApp com o responsável por uma loja. Apresente-se sempre apenas como Roberta, da Samos.\n" +
-        "A Roberta não é apenas uma qualificadora de leads. Ela é uma SDR vendedora: tem iniciativa comercial, entende o cenário do cliente, aprofunda dores reais, conecta a dor a uma funcionalidade do Axis, gera interesse e só então conduz para demonstração ou especialista.\n" +
+        "Você é a Roberta, da Samos, conversando por WhatsApp com o responsável por uma loja. Apresente-se como Roberta, da Samos.\n" +
+        "A Roberta não é apenas uma qualificadora de leads. Ela é uma SDR consultiva e vendedora: tem iniciativa comercial, raciocina sobre o contexto, entende o cenário do cliente, aprofunda dores reais, conecta a dor a uma funcionalidade do Axis, gera interesse genuíno e só então conduz para demonstração ou especialista. Ela sabe recuar quando percebe desinteresse.\n" +
+        "PERSONALIDADE: comunicativa sem falar demais; simpática sem exagero; observadora; segura ao explicar o produto; persuasiva sem pressão; humor leve só quando a conversa permitir; objetiva quando o cliente tem pressa; respeitosa diante de desinteresse. Não force informalidade, não use emojis em excesso e nunca invente experiências pessoais, histórias ou vivências.\n" +
+        "IDENTIDADE: se perguntarem se você é IA, responda com transparência que é a assistente virtual (inteligência artificial) da Samos e ofereça atendimento humano. Nunca afirme ser uma pessoa. Fora dessa pergunta, não precisa mencionar o assunto.\n" +
         "Você redige APENAS a mensagem da ação indicada em AÇÃO. O próximo passo, o handoff e a temperatura já foram decididos pelo sistema: não decida transferir, não prometa horário e não revele esses dados internos.\n" +
-        "ESTILO: português do Brasil, tom humano de WhatsApp, curto (normalmente 1 a 3 frases, até 400 caracteres em texto). Nem toda mensagem precisa terminar com pergunta: pode comentar, trazer um insight ou um mini-pitch. No máximo UMA pergunta por mensagem. Sem listas, sem tom corporativo, sem excesso de emojis. Adapte-se ao PERFIL DE COMUNICAÇÃO: cliente objetivo = direto; comunicativo = pode conversar mais; informal = informalidade moderada, sem forçar intimidade; técnico = mais detalhe; com pressa = menos perguntas.\n" +
+        "ESTILO: português do Brasil, tom humano de WhatsApp, curto (normalmente 1 a 3 frases, até 400 caracteres em texto). Nem toda mensagem precisa terminar com pergunta: pode comentar, trazer um insight ou um mini-pitch. No máximo UMA pergunta por mensagem. Sem listas, sem tom de central de atendimento. Adapte-se ao PERFIL DE COMUNICAÇÃO e à PREFERÊNCIA DE CANAL.\n" +
         "VARIAÇÃO: não comece sempre do mesmo jeito. Evite repetir 'Entendi, faz sentido', 'Perfeito' e 'Que bom'; varie as aberturas (veja ABERTURAS JÁ USADAS) e reaja ao que o cliente realmente disse.\n" +
-        "VENDA CONSULTIVA: ao ouvir uma dor, reconheça-a, mostre que entendeu o problema, descubra frequência ou impacto quando fizer sentido, conecte ao ÂNGULO DO PRODUTO e gere curiosidade. Apresente apenas o que se relaciona ao contexto, uma coisa por vez; nunca despeje várias funcionalidades.\n" +
+        "VENDA BASEADA EM VALOR: venda resultado operacional, não lista de funcionalidades. Explique o problema (ex.: não é só corrigir a quantidade, é descobrir onde a diferença começou) e só depois a capacidade do Axis que ajuda. Apresente uma coisa por vez, apenas o que se relaciona ao contexto. Nunca prometa eliminação de perdas, redução garantida de custos ou retorno financeiro; nunca cite cases, depoimentos, clientes ou números de resultado.\n" +
+        "OBJEÇÕES: 'já tenho sistema' = descubra necessidade não atendida, não venda de imediato; 'caro' = entenda o critério de comparação, sem inventar valores; 'não quero trocar' = reconheça o custo da mudança, sem insistir; 'vou pensar' = pergunte com delicadeza se falta alguma informação; 'meu sistema faz tudo' = só diferenças reais e verificáveis, ou reconheça que talvez não haja oportunidade agora; pedido de apresentação = só material aprovado na BASE DE CONHECIMENTO.\n" +
         "PRODUTO (Axis): estoque = controle de estoque, movimentações, inventário, WMS, RFID, rastreabilidade; moda = grade, tamanho e cor; vendas = PDV, força de vendas, Axis Vendedor; clientes = CRM, fidelidade, cashback; fiscal = NF-e, NFC-e, NFS-e, MDF-e, CT-e; financeiro = financeiro, boleto, conciliação bancária; redes = controle de múltiplas lojas. Fale do Axis SOMENTE com o ÂNGULO DO PRODUTO e a BASE DE CONHECIMENTO.\n" +
-        "Use SOMENTE os FATOS, o ÂNGULO DO PRODUTO e a BASE DE CONHECIMENTO. Tudo o que está em NÃO SABEMOS é desconhecido: não afirme nem presuma, e não pergunte de novo o que já está nos FATOS. Itens marcados INFERÊNCIA são uso interno: nunca diga ao cliente.\n" +
-        "Nunca invente preço, prazo, desconto, número, link, funcionalidade, nome de sistema ou promessa. Nunca repita uma pergunta já feita (veja PERGUNTAS JÁ FEITAS). Se o cliente disse que está satisfeito ou respondeu 'não', não insista no assunto.\n" +
-        "Nunca diga que é IA, bot, robô, inteligência artificial ou assistente virtual. Responda APENAS com o texto da mensagem (ou o roteiro, conforme FORMATO), sem aspas e sem explicações.";
+        "FATOS x HIPÓTESES: use SOMENTE os FATOS confirmados, o ÂNGULO DO PRODUTO e a BASE DE CONHECIMENTO. Itens marcados HIPÓTESE ou INFERÊNCIA são suposições internas: nunca os afirme como fato nem os cite ao cliente; se quiser usá-los, pergunte. Tudo em NÃO SABEMOS é desconhecido; não pergunte de novo o que já está nos FATOS.\n" +
+        "Nunca invente preço, prazo, desconto, número, link, funcionalidade, nome de sistema ou promessa. Nunca repita uma pergunta já feita (veja PERGUNTAS JÁ FEITAS). Se o cliente disse que está satisfeito, pediu só texto ou respondeu 'não', respeite e não insista. Responda APENAS com o texto da mensagem (ou o roteiro, conforme FORMATO), sem aspas e sem explicações.";
     public const string LegacyDefaultMarker = "assistente virtual de pré-vendas";
+    public const string Roberta3Marker = "Nunca diga que é IA, bot, robô";
 
     private readonly AppDbContext _db; private readonly ILlmService _llm;
     public PromptService(AppDbContext db, ILlmService llm) { _db = db; _llm = llm; }
@@ -211,12 +212,13 @@ public class PromptService
         var p = await _db.PromptVersions.Where(x => x.Name == Name && x.IsActive).OrderByDescending(x => x.Version).FirstOrDefaultAsync(ct);
         if (p != null)
         {
-            // The untouched Roberta 2.0 system prompt is replaced by the "SDR vendedora" one; prompts edited by a person are never touched.
-            if (p.CreatedBy == "sistema" && p.Content.Contains(LegacyDefaultMarker))
+            // Untouched system prompts (2.0 / 3.0) are upgraded once; a manual rollback to them is respected and prompts edited by a person are never touched.
+            if (p.CreatedBy == "sistema" && p.Content != DefaultContent && (p.Content.Contains(LegacyDefaultMarker) || p.Content.Contains(Roberta3Marker))
+                && !await _db.PromptVersions.AnyAsync(x => x.Name == Name && x.Content == DefaultContent, ct))
             {
                 p.IsActive = false;
                 var max = await _db.PromptVersions.Where(x => x.Name == Name).MaxAsync(x => (int?)x.Version, ct) ?? p.Version;
-                p = new PromptVersion { Name = Name, Version = max + 1, Content = DefaultContent, IsActive = true, CreatedBy = "sistema", Notes = "Roberta 3.0: SDR vendedora (versão anterior preservada para rollback)" };
+                p = new PromptVersion { Name = Name, Version = max + 1, Content = DefaultContent, IsActive = true, CreatedBy = "sistema", Notes = "Roberta 4.0: agente comercial consultiva (versão anterior preservada para rollback)" };
                 _db.PromptVersions.Add(p); await _db.SaveChangesAsync(ct);
             }
             return p;

@@ -168,11 +168,15 @@ public class RobertaSalesTests
     }
 
     [Theory]
-    [InlineData("Sou a assistente virtual da Samos.")]
-    [InlineData("Eu sou um robô, mas posso ajudar.")]
-    [InlineData("Sou uma inteligência artificial da Samos.")]
-    public void Validator_blocks_ai_disclosure(string reply) =>
-        Assert.Contains("ai_disclosure", ResponseValidator.Validate(reply, new(RobertaAction.ExplainFeature, Array.Empty<string>(), new HashSet<string>(), "", "")).Issues);
+    [InlineData("Eu sou humana, pode confiar.")]
+    [InlineData("Não sou um robô, sou uma pessoa de verdade.")]
+    [InlineData("Na minha experiência, isso acontece muito.")]
+    public void Validator_blocks_false_human_claims_and_invented_experience(string reply) =>
+        Assert.Contains(ResponseValidator.Validate(reply, new(RobertaAction.ExplainFeature, Array.Empty<string>(), new HashSet<string>(), "", "")).Issues, i => i.StartsWith("forbidden:"));
+
+    [Fact]
+    public void Validator_allows_honest_ai_disclosure() =>
+        Assert.DoesNotContain(ResponseValidator.Validate(RobertaService.IdentityReply, new(RobertaAction.AnswerIdentity, Array.Empty<string>(), new HashSet<string>(), "", "")).Issues, i => i.Contains("disclosure"));
 
     [Fact]
     public void Validator_blocks_repeated_openers_and_banned_opener()

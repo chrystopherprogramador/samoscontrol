@@ -184,9 +184,13 @@ public static class FormatAdvisor
     public static ReplyFormat Choose(ConversationState s, InboundSignals sig, RobertaAction a, bool voiceAvailable, bool clientSentAudio, bool lastOutboundWasAudio)
     {
         if (!voiceAvailable) return ReplyFormat.Text;
+        // A written-only request always wins; the same for content that must stay written or is too short/sensitive for a voice note.
+        if (s.PreferredChannel == "texto") return ReplyFormat.Text;
         if (a is RobertaAction.DoNotContact or RobertaAction.CloseConversation or RobertaAction.HandoffToSeller or RobertaAction.ExplainPricing
-            or RobertaAction.AskCurrentERP or RobertaAction.AskStoreCount or RobertaAction.FollowUp or RobertaAction.RespectBusy or RobertaAction.ScheduleDemo)
+            or RobertaAction.AskCurrentERP or RobertaAction.AskStoreCount or RobertaAction.FollowUp or RobertaAction.RespectBusy or RobertaAction.ScheduleDemo
+            or RobertaAction.AnswerIdentity or RobertaAction.PauseConversation or RobertaAction.SendUsefulInformation or RobertaAction.AskForMeeting or RobertaAction.ConfirmUnderstanding)
             return ReplyFormat.Text;
+        if (s.PreferredChannel == "audio") clientSentAudio = true;
         var style = ConversationStateRules.Set(s.ClientStyle);
         var informative = a is RobertaAction.ExplainFeature or RobertaAction.ExplainStockControl or RobertaAction.ExplainMultistore or RobertaAction.OfferDemo;
         if (clientSentAudio) return informative || style.Contains("tecnico") ? ReplyFormat.AudioPlusText : ReplyFormat.Audio;
@@ -196,7 +200,8 @@ public static class FormatAdvisor
         var warm = s.Engagement == "alto" || style.Contains("informal") || s.Temperature >= 55;
         return a switch
         {
-            RobertaAction.PitchFeature or RobertaAction.HandleObjection => warm ? (s.Temperature >= 65 ? ReplyFormat.AudioPlusText : ReplyFormat.Audio) : ReplyFormat.Text,
+            RobertaAction.PitchFeature or RobertaAction.HandleObjection or RobertaAction.ShareInsight or RobertaAction.TellUseCase or RobertaAction.CreateCuriosity
+                or RobertaAction.DifferentiateCompetitor => warm ? (s.Temperature >= 65 ? ReplyFormat.AudioPlusText : ReplyFormat.Audio) : ReplyFormat.Text,
             RobertaAction.DeepenPain => warm && s.Temperature >= 45 && s.PainIntensity >= 1 ? ReplyFormat.Audio : ReplyFormat.Text,
             RobertaAction.OfferDemo => warm && s.Temperature >= 65 ? ReplyFormat.AudioPlusText : ReplyFormat.Text,
             _ => informative && s.Engagement == "alto" && sig.WordCount >= 8 ? ReplyFormat.AudioPlusText : ReplyFormat.Text
@@ -249,6 +254,8 @@ public static class HandoffMessages
                 $"Valores e condições dependem do formato da sua operação, então prefiro que {someone} veja isso com você. Já peço para continuar a conversa por aqui."
             },
             "implantacao" => new[] { $"Sobre implantação, quem conhece o passo a passo é o nosso time. Vou chamar {someone} para te explicar direitinho." },
+            "prova" => new[] { $"Boa pergunta, e prefiro não te passar nada que eu não possa comprovar. Vou chamar {someone} para conversar com você sobre isso com informações reais." },
+            "material" => new[] { $"Vou pedir para {someone} te enviar o material certinho e, se fizer sentido, combinar o próximo passo com você por aqui." },
             "humano" => new[] { $"Claro! Vou chamar {someone} para continuar com você por aqui.", $"Sem problema. Já peço para {someone} falar com você por aqui." },
             "rede" => new[] { $"Com uma operação desse tamanho, vale conversar com quem cuida de redes aqui na Samos. Vou chamar {someone} para falar com você." },
             "irritado" => new[] { $"Desculpa o incômodo. Vou pedir para {someone} falar com você pessoalmente." },

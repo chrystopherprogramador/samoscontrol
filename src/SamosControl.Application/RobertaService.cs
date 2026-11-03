@@ -8,7 +8,7 @@ using SamosControl.Integrations;
 
 namespace SamosControl.Application;
 
-public record RobertaProposal(Decision Decision, string? Reply, ValidationResult Validation, ConversationState State, SdrSuggestion Suggestion, bool Escalated);
+public record RobertaProposal(Decision Decision, string? Reply, ValidationResult Validation, ConversationState State, SdrSuggestion Suggestion, bool Escalated, bool Duplicate = false, CommercialPlan? Plan = null);
 
 /// <summary>Roberta 2.0: state → deterministic decision → LLM phrases only → validator → (regenerate once | escalate).</summary>
 public class RobertaService
@@ -19,6 +19,17 @@ public class RobertaService
     private readonly AppDbContext _db; private readonly ILlmService _llm; private readonly PromptService _prompts; private readonly KnowledgeService _kb; private readonly ILogger<RobertaService> _log;
     public RobertaService(AppDbContext db, ILlmService llm, PromptService prompts, KnowledgeService kb, ILogger<RobertaService> log)
     { _db = db; _llm = llm; _prompts = prompts; _kb = kb; _log = log; }
+
+    public static string Instruction(RobertaAction a, string? topic) => a == RobertaAction.HandleObjection && topic != null ? topic switch
+    {
+        Obj.JaTenhoSistema => "O cliente já tem sistema. NÃO tente vender agora. Reconheça com naturalidade e descubra, com UMA pergunta aberta e sem pressão, se existe algo que o sistema atual não resolve bem.",
+        Obj.Caro => "O cliente achou caro. NÃO cite valores nem descontos. Entenda com UMA pergunta com o que ele está comparando ou o que pesa mais; se a BASE tiver informação de valor, use só ela. Respeite os limites comerciais.",
+        Obj.NaoTrocar => "O cliente não quer trocar de sistema. Reconheça que migrar dá trabalho e tem custo, sem insistir. Pergunte, de forma opcional, se existe algum ponto específico que valeria olhar sem precisar trocar nada agora.",
+        Obj.VouPensar => "O cliente vai pensar. Não pressione. Em 1 ou 2 frases, pergunte com delicadeza se falta alguma informação que ajudaria na decisão e deixe a porta aberta.",
+        Obj.Desconfianca => "O cliente desconfia do contato. Seja honesta e breve: diga quem é (Roberta, da Samos), por que está falando com ele e que pode parar o contato quando quiser. Sem argumentos de venda.",
+        Obj.NecessidadeNaoAtendida => "O cliente tem uma necessidade que talvez o Axis não cubra. Seja honesta: confirme só o que consta na BASE DE CONHECIMENTO, não prometa nada fora dela e diga que um especialista pode validar.",
+        _ => Instruction(a)
+    } : Instruction(a);
 
     public static string Instruction(RobertaAction a) => a switch
     {
@@ -35,6 +46,16 @@ public class RobertaService
         RobertaAction.OfferDemo => "Ofereça uma demonstração rápida, sem compromisso, ligada à dor do cliente quando houver, com UMA pergunta fechada (sim/não). Se o cliente está satisfeito, reconheça isso e NÃO pergunte sobre dores.",
         RobertaAction.ScheduleDemo => "Combine a demonstração; peça apenas um melhor horário. UMA pergunta.",
         RobertaAction.HandleObjection => "Reconheça a objeção com respeito, sem insistir nem repetir argumentos.",
+        RobertaAction.BuildRapport => "O cliente saiu do assunto comercial. Responda em UMA frase curta e simpática ao que ele disse, sem inventar experiências pessoais, e retome com leveza o assunto da conversa. No máximo uma pergunta leve.",
+        RobertaAction.ExploreImpact => "O cliente já relatou uma dor. Descubra o IMPACTO dela (frequência, consequência na operação ou no atendimento) com UMA pergunta contextual, reconhecendo antes o que ele disse. NÃO ofereça demonstração e NÃO afirme números.",
+        RobertaAction.ShareInsight => "Compartilhe um insight curto sobre a causa típica do problema do cliente, usando 'costuma' ou 'pode ser' (nunca como fato sobre a empresa dele), conectando ao ÂNGULO DO PRODUTO. Pode terminar sem pergunta.",
+        RobertaAction.TellUseCase => "Ilustre com um cenário de uso GENÉRICO e hipotético ('imagine uma loja em que...'), ligado ao ÂNGULO DO PRODUTO. NUNCA cite clientes reais, cases, depoimentos, números ou resultados. No máximo UMA pergunta leve.",
+        RobertaAction.DifferentiateCompetitor => "Sem criticar o sistema que o cliente usa, aponte UMA diferença real e verificável do Axis a partir do ÂNGULO DO PRODUTO/BASE DE CONHECIMENTO. Se não houver diferença verificável, reconheça com honestidade que talvez não haja oportunidade agora. No máximo UMA pergunta.",
+        RobertaAction.CreateCuriosity => "O engajamento está baixo: em 1 ou 2 frases, desperte curiosidade ligada à dor do cliente usando o ÂNGULO DO PRODUTO, sem listar funcionalidades e sem pressionar. Pode terminar sem pergunta.",
+        RobertaAction.ConfirmUnderstanding => "Resuma em uma frase o que você entendeu usando SOMENTE os FATOS confirmados (nunca trate HIPÓTESE como fato) e pergunte se entendeu certo ou se falta algo. Se o cliente está voltando após dias, retome do ponto em que parou. UMA pergunta.",
+        RobertaAction.AskForMeeting => "O cliente ainda não respondeu ao convite. Proponha um horário para uma conversa curta, respeitando a PREFERÊNCIA DE HORÁRIO quando houver, sem pressão e com uma saída fácil. UMA pergunta.",
+        RobertaAction.SendUsefulInformation => "Envie a informação pedida usando SOMENTE a BASE DE CONHECIMENTO aprovada (sem inventar material, links ou números) e combine um próximo passo opcional.",
+        RobertaAction.PauseConversation => "O cliente demonstra pouco interesse. Recue com elegância em 1 ou 2 frases: diga que fica à disposição quando fizer sentido, SEM perguntas e sem insistir.",
         RobertaAction.FollowUp => "Retome o contato de forma leve, em poucas frases, citando a dor ou o assunto que o cliente trouxe antes e oferecendo um ponto de valor. Sem 'conseguiu ver minha mensagem?' e sem repetir mensagens anteriores.",
         _ => "Encerre com cordialidade, sem perguntas."
     };
@@ -66,6 +87,13 @@ public class RobertaService
         if (s.InterestLevel > 0) sb.AppendLine($"INFERÊNCIA: nível de interesse {s.InterestLevel}/3 (não afirmar ao cliente)");
         sb.AppendLine($"INFERÊNCIA: temperatura comercial {s.Temperature}/100, intenção de compra {s.BuyingIntent}, engajamento {s.Engagement} (uso interno, nunca dizer ao cliente)");
         sb.AppendLine("PERFIL DE COMUNICAÇÃO: " + FeelingRules.StyleGuidance(s));
+        if (!string.IsNullOrWhiteSpace(s.Hypotheses)) sb.AppendLine("HIPÓTESE (não confirmada; nunca afirmar como fato, só perguntar): " + s.Hypotheses);
+        if (!string.IsNullOrWhiteSpace(s.ImpactNotes)) sb.AppendLine("FATO: impacto relatado pelo lead = " + s.ImpactNotes);
+        if (!string.IsNullOrWhiteSpace(s.PreferredChannel)) sb.AppendLine("PREFERÊNCIA DE CANAL: " + (s.PreferredChannel == "texto" ? "apenas texto (nunca áudio)" : "gosta de áudio"));
+        if (!string.IsNullOrWhiteSpace(s.PreferredTime)) sb.AppendLine("PREFERÊNCIA DE HORÁRIO (informada pelo lead): " + s.PreferredTime);
+        if (!string.IsNullOrWhiteSpace(s.Commitments)) sb.AppendLine("COMPROMISSOS ASSUMIDOS: " + s.Commitments);
+        if (!string.IsNullOrWhiteSpace(s.ObjectionLog)) sb.AppendLine("OBJEÇÕES JÁ LEVANTADAS: " + s.ObjectionLog);
+        if (!string.IsNullOrWhiteSpace(s.ActionHistory)) sb.AppendLine("ÚLTIMAS ESTRATÉGIAS USADAS (evite repetir o que não funcionou): " + s.ActionHistory);
         if (!string.IsNullOrWhiteSpace(s.FeaturesPresented)) sb.AppendLine("JÁ APRESENTADO (não repetir): " + s.FeaturesPresented);
         if (!string.IsNullOrWhiteSpace(s.LastQuestion)) sb.AppendLine("ÚLTIMA PERGUNTA FEITA: " + s.LastQuestion);
         var unknown = new List<string>();
@@ -76,7 +104,9 @@ public class RobertaService
 
     private static string ProductBlock(Decision d, ConversationState s)
     {
-        if (d.Action is not (RobertaAction.DeepenPain or RobertaAction.PitchFeature or RobertaAction.OfferDemo or RobertaAction.FollowUp)) return "";
+        if (d.Action is not (RobertaAction.DeepenPain or RobertaAction.PitchFeature or RobertaAction.OfferDemo or RobertaAction.FollowUp or RobertaAction.ExploreImpact or RobertaAction.ShareInsight
+            or RobertaAction.TellUseCase or RobertaAction.CreateCuriosity or RobertaAction.DifferentiateCompetitor or RobertaAction.ConfirmUnderstanding or RobertaAction.HandleObjection
+            or RobertaAction.AskForMeeting)) return "";
         var angle = ProductCatalog.Next(s.MainPain, s.FeaturesPresented);
         var sb = new StringBuilder("\n\nÂNGULO DO PRODUTO (única base permitida para falar do Axis nesta mensagem): " + angle.Text);
         if (d.Action == RobertaAction.DeepenPain) sb.Append("\nPERGUNTAS POSSÍVEIS (escolha UMA, adapte ao contexto): " + string.Join(" | ", ProductCatalog.ProbesFor(s.MainPain)));
@@ -90,7 +120,7 @@ public class RobertaService
     {
         var asked = ConversationStateRules.Set(s.QuestionsAsked);
         var openers = recent.Select(ResponseValidator.Opener).Where(x => x.Length > 0).Distinct().ToList();
-        var sys = p.Content + "\n\nAÇÃO: " + Instruction(d.Action) + "\n" + FormatInstruction(format) + "\n\nFATOS:\n" + FactsBlock(lead, s) +
+        var sys = p.Content + "\n\nAÇÃO: " + Instruction(d.Action, d.Topic) + "\n" + FormatInstruction(format) + "\n\nFATOS:\n" + FactsBlock(lead, s) +
                   "\nPERGUNTAS JÁ FEITAS (não repetir): " + (asked.Count == 0 ? "nenhuma" : string.Join(", ", asked)) +
                   (openers.Count == 0 ? "" : "\nABERTURAS JÁ USADAS (comece de outro jeito): " + string.Join(", ", openers)) + ProductBlock(d, s) +
                   "\n\nBASE DE CONHECIMENTO:\n" + kbPrompt + (fixes == null ? "" : "\n\nA TENTATIVA ANTERIOR FOI REPROVADA PELOS MOTIVOS: " + fixes + ". Corrija.");
@@ -117,17 +147,47 @@ public class RobertaService
         return null;
     }
 
-    public async Task<RobertaProposal> ProposeAsync(SdrContact contact, Lead lead, string text, List<AiChatMessage> hist, bool viaAudio = false, TimeSpan? replyDelay = null, bool voiceAvailable = false, bool lastOutboundWasAudio = false, CancellationToken ct = default)
+    /// <summary>In shadow mode the commercial state lives in a separate row so simulations never contaminate the real conversation state.</summary>
+    private async Task<(ConversationState State, ShadowConversationState? Row)> ShadowStateAsync(Lead lead, CancellationToken ct)
     {
-        var state = await StateAsync(lead, ct);
+        var row = await _db.ShadowConversationStates.FirstOrDefaultAsync(x => x.LeadId == lead.Id, ct);
+        ConversationState? st = null;
+        if (row != null) try { st = JsonSerializer.Deserialize<ConversationState>(row.Json); } catch (JsonException) { }
+        if (st == null)
+        {
+            var real = await _db.ConversationStates.AsNoTracking().FirstOrDefaultAsync(x => x.LeadId == lead.Id, ct);
+            st = real != null ? JsonSerializer.Deserialize<ConversationState>(JsonSerializer.Serialize(real))! : new ConversationState { LeadId = lead.Id, Segment = lead.Segment };
+        }
+        if (row == null) { row = new ShadowConversationState { LeadId = lead.Id }; _db.ShadowConversationStates.Add(row); }
+        return (st, row);
+    }
+
+    private static string InboundHash(string text) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(InboundClassifier.Normalize(text).Trim()))).Substring(0, 16);
+
+    public const string IdentityReply = "Sou a Roberta, assistente virtual da Samos (uma inteligência artificial). Posso continuar te ajudando por aqui ou, se preferir, chamo alguém do nosso time para falar com você. Como prefere?";
+
+    public async Task<RobertaProposal> ProposeAsync(SdrContact contact, Lead lead, string text, List<AiChatMessage> hist, bool viaAudio = false, TimeSpan? replyDelay = null, bool voiceAvailable = false, bool lastOutboundWasAudio = false, CancellationToken ct = default, bool shadow = false)
+    {
+        ConversationState state; ShadowConversationState? shadowRow = null;
+        if (shadow) (state, shadowRow) = await ShadowStateAsync(lead, ct); else state = await StateAsync(lead, ct);
         var sig = InboundClassifier.Classify(text);
+
+        // The same inbound delivered twice (webhook retry / simultaneous delivery) must not advance the conversation twice.
+        var hash = InboundHash(text);
+        if (text.Trim().Length >= 12 && state.LastInboundHash == hash && state.LastInboundAt != null && (DateTime.UtcNow - state.LastInboundAt.Value).TotalSeconds < 30)
+        {
+            _log.LogInformation("Roberta: inbound duplicado ignorado (lead {Lead})", lead.Id);
+            return new RobertaProposal(new Decision(RobertaAction.PauseConversation, "Mensagem duplicada ignorada.", false), null, new(true, new(), new()), state, null!, false, true);
+        }
         ConversationStateRules.Apply(state, sig, text, viaAudio, replyDelay);
+        state.LastInboundHash = hash;
 
         var kb = await _kb.RelevantAsync(text);
         var kbText = KnowledgeService.AsPrompt(kb);
         var kbPricing = kb.Any(k => InboundClassifier.Normalize(k.Question + " " + k.Topic).Contains("preco") || InboundClassifier.Normalize(k.Question + k.Topic).Contains("valor") || InboundClassifier.Normalize(k.Question + k.Topic).Contains("plano"));
         var d = CommercialDecisionEngine.Decide(state, sig, kb.Count > 0, kbPricing);
-        if (d.Action == RobertaAction.HandoffToSeller && d.Reason.StartsWith("Pergunta fora da base")) await _kb.RegisterGapAsync(text, lead.Id);
+        if (d.Action == RobertaAction.HandoffToSeller && d.Reason.StartsWith("Pergunta fora da base") && !shadow) await _kb.RegisterGapAsync(text, lead.Id);
 
         var prompt = await _prompts.ActiveAsync(ct);
         string? reply = null; ValidationResult v; var escalated = false;
@@ -137,6 +197,7 @@ public class RobertaService
 
         if (d.Action == RobertaAction.DoNotContact) { reply = GoodbyeOptOut; v = new(true, new(), ResponseValidator.Validate(reply, new(d.Action, recent, asked, GroundedText(lead, state, kbText), text)).Scores); format = ReplyFormat.Text; }
         else if (d.Action == RobertaAction.CloseConversation) { reply = GoodbyeClose; v = new(true, new(), ResponseValidator.Validate(reply, new(d.Action, recent, asked, GroundedText(lead, state, kbText), text)).Scores); format = ReplyFormat.Text; }
+        else if (d.Action == RobertaAction.AnswerIdentity) { reply = IdentityReply; v = new(true, new(), new()); format = ReplyFormat.Text; }
         else if (!d.NeedsLlm) { v = new(true, new(), new()); format = ReplyFormat.Text; }
         else
         {
@@ -168,19 +229,31 @@ public class RobertaService
             }
         }
 
+        var plan = PlanBuilder.Build(state, sig, d, format);
+        var planIssues = PlanValidator.Validate(plan, state, sig, voiceAvailable);
+        if (planIssues.Count > 0)
+        {
+            _log.LogWarning("Roberta: plano com problemas {Issues} (lead {Lead}, ação {Action})", string.Join(",", planIssues), lead.Id, d.Action);
+            if (planIssues.Any(i => i.StartsWith("audio_")) && format != ReplyFormat.Text) { format = ReplyFormat.Text; if (reply != null) reply = FormatAdvisor.Plain(reply); plan = plan with { ResponseModality = "text" }; }
+        }
+        _log.LogInformation("Roberta plano: lead {Lead} estratégia {Strategy} meta {Goal} confiança {Conf} shadow {Shadow}", lead.Id, plan.SelectedStrategy, plan.CommercialGoal, plan.Confidence, shadow);
+
         ConversationStateRules.RecordAction(state, d.Action, reply, FormatAdvisor.Code(format), d.HandoffKind);
         state.NextAction = null;
         state.Summary = Summarize(state);
+        if (shadowRow != null) shadowRow.Json = JsonSerializer.Serialize(state);
 
         var sug = new SdrSuggestion
         {
             ContactId = contact.Id, LeadId = lead.Id, InboundText = text.Truncate(1900), Action = d.Action.ToString(), Reply = reply?.Truncate(1900), Format = FormatAdvisor.Code(format),
+            Strategy = plan.SelectedStrategy, ObjectionKind = sig.Objection,
             ValidatorOk = v.Ok, ValidatorIssues = string.Join(", ", v.Issues).Truncate(900), PromptVersion = prompt.Version,
             ScoresJson = JsonSerializer.Serialize(v.Scores),
             ContextJson = JsonSerializer.Serialize(new
             {
                 reason = d.Reason, stage = state.Stage.ToString(), state.CurrentErp, state.StoreCount, state.PainPoints, state.QuestionsAsked, state.QuestionsAnswered,
                 state.SatisfiedWithCurrent, state.NegativeStreak, state.TurnCount, state.InterestLevel, kb = kb.Select(k => k.Question).Take(6),
+                plan, planIssues, shadow, hypotheses = state.Hypotheses, state.OpportunityStage, state.LossSignals,
                 feeling = new
                 {
                     temperatura_lead = state.Temperature, intencao_compra = state.BuyingIntent, dor_principal = state.MainPain, engajamento = state.Engagement,
@@ -191,7 +264,7 @@ public class RobertaService
         };
         _db.SdrSuggestions.Add(sug);
         await _db.SaveChangesAsync(ct);
-        return new RobertaProposal(d, reply, v, state, sug, escalated);
+        return new RobertaProposal(d, reply, v, state, sug, escalated, false, plan);
     }
 
     /// <summary>Contextual follow-up for a lead that stopped answering: resumes from the pain already voiced, never a generic nudge.

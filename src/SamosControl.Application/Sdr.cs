@@ -171,6 +171,16 @@ public class SdrService
                 await _db.SaveChangesAsync(ct);
                 await SafeSendAsync(c, contact.Phone, reply ?? RobertaService.GoodbyeClose, ct);
                 return;
+            case RobertaAction.PauseConversation:
+                // Backing off: say it once, then wait for the lead (no scheduled follow-up) without closing the opportunity.
+                contact.NextActionAt = null;
+                await _db.SaveChangesAsync(ct);
+                if (!string.IsNullOrWhiteSpace(reply)) await SafeSendAsync(c, contact.Phone, FormatAdvisor.Plain(reply), ct);
+                return;
+            case RobertaAction.AnswerIdentity:
+                await _db.SaveChangesAsync(ct);
+                await SafeSendAsync(c, contact.Phone, reply ?? RobertaService.IdentityReply, ct);
+                return;
         }
         if (string.IsNullOrWhiteSpace(reply)) return;
         contact.AiTurns++;
@@ -339,6 +349,18 @@ public class SdrService
         {
             x.Stage = SdrStage.Encerrado; x.NextActionAt = null; await _db.SaveChangesAsync(ct); return false;
         }
+        // Follow-up gate: opt-out, attempt limits, minimum interval, business hours and a real reason to resume.
+        var now0 = DateTime.UtcNow; var local0 = AppTime.ToLocal(now0);
+        var st = await _db.ConversationStates.AsNoTracking().FirstOrDefaultAsync(s => s.LeadId == x.LeadId, ct);
+        var gate = FollowUpPolicy.Evaluate(st, x.Attempts, c.MaxFollowUps, x.Stage == SdrStage.Respondeu, x.LastSentAt, now0, local0.Hour, local0.DayOfWeek == DayOfWeek.Sunday);
+        if (!gate.Allowed)
+        {
+            _log.LogInformation("SDR: follow-up bloqueado (contato {Id}): {Reason}", x.Id, gate.Reason);
+            if (gate.Close) { x.Stage = SdrStage.Encerrado; x.NextActionAt = null; }
+            else x.NextActionAt = now0.AddHours(4);
+            await _db.SaveChangesAsync(ct);
+            return false;
+        }
         string? text = null;
         if (c.Mode == SdrMode.Auto)
         {
@@ -385,10 +407,17 @@ public class SdrService
             var lastOut = await _db.WhatsAppMessages.Where(m => m.Conversation!.SellerId == sellerId && m.Conversation.Phone.EndsWith(key!) && m.Direction == MessageDirection.Out)
                 .OrderByDescending(m => m.Id).Select(m => new { m.Type, m.Timestamp }).FirstOrDefaultAsync(ct);
             var delay = lastOut == null ? (TimeSpan?)null : DateTime.UtcNow - lastOut.Timestamp;
-            var p = await _roberta.ProposeAsync(contact, lead, text, hist, viaAudio, delay, _wa.VoiceAvailable, lastOut?.Type == "audio", ct);
+            var shadow = c.Mode == SdrMode.Shadow;
+            RobertaProposal p;
+            try { p = await _roberta.ProposeAsync(contact, lead, text, hist, viaAudio, delay, _wa.VoiceAvailable, lastOut?.Type == "audio", ct, shadow); }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                _log.LogWarning(ex, "SDR: atualização concorrente do estado da conversa (contato {Id}); mensagem ignorada para evitar duplicidade", contact.Id);
+                return;
+            }
+            if (p.Duplicate) return;
             var sug = p.Suggestion;
-            contact.Score = Math.Clamp(p.State.InterestLevel * 33, 0, 100);
-            contact.Summary = p.State.Summary;
+            if (!shadow) { contact.Score = Math.Clamp(p.State.InterestLevel * 33, 0, 100); contact.Summary = p.State.Summary; }
             if (p.Decision.Action == RobertaAction.DoNotContact)
             {
                 contact.Stage = SdrStage.OptOut;

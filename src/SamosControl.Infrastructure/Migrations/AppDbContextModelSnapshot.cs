@@ -976,6 +976,13 @@ namespace SamosControl.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ActionHistory")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<bool>("AiDisclosed")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("AudioSentCount")
                         .HasColumnType("integer");
 
@@ -990,6 +997,10 @@ namespace SamosControl.Infrastructure.Migrations
                     b.Property<string>("ClientStyle")
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Commitments")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1027,6 +1038,17 @@ namespace SamosControl.Infrastructure.Migrations
                     b.Property<bool>("HumanRequested")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Hypotheses")
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)");
+
+                    b.Property<bool>("ImpactKnown")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ImpactNotes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<int>("InboundWords")
                         .HasColumnType("integer");
 
@@ -1047,11 +1069,18 @@ namespace SamosControl.Infrastructure.Migrations
                     b.Property<DateTime?>("LastInboundAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("LastInboundHash")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<string>("LastQuestion")
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
 
                     b.Property<int>("LeadId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LossSignals")
                         .HasColumnType("integer");
 
                     b.Property<string>("MainPain")
@@ -1065,12 +1094,25 @@ namespace SamosControl.Infrastructure.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
+                    b.Property<string>("ObjectionLog")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
                     b.Property<string>("Objections")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("OpportunityStage")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<bool>("OptOut")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("PainCategories")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
 
                     b.Property<int>("PainDepth")
                         .HasColumnType("integer");
@@ -1084,6 +1126,14 @@ namespace SamosControl.Infrastructure.Migrations
 
                     b.Property<int>("PitchCount")
                         .HasColumnType("integer");
+
+                    b.Property<string>("PreferredChannel")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("PreferredTime")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
 
                     b.Property<bool>("PriceDiscussed")
                         .HasColumnType("boolean");
@@ -1113,8 +1163,16 @@ namespace SamosControl.Infrastructure.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
+                    b.Property<int>("StateVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
                     b.Property<int?>("StoreCount")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Strategy")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
 
                     b.Property<string>("Summary")
                         .HasMaxLength(1500)
@@ -2231,6 +2289,10 @@ namespace SamosControl.Infrastructure.Migrations
                     b.Property<int>("LeadId")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ObjectionKind")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<int?>("PromptVersion")
                         .HasColumnType("integer");
 
@@ -2253,6 +2315,10 @@ namespace SamosControl.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Strategy")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -2456,6 +2522,35 @@ namespace SamosControl.Infrastructure.Migrations
                     b.HasIndex("ServiceId", "At");
 
                     b.ToTable("ServiceChecks");
+                });
+
+            modelBuilder.Entity("SamosControl.Domain.ShadowConversationState", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("LeadId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeadId")
+                        .IsUnique();
+
+                    b.ToTable("ShadowConversationStates");
                 });
 
             modelBuilder.Entity("SamosControl.Domain.Tag", b =>

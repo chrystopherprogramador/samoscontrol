@@ -62,6 +62,42 @@ public class ConversationState : BaseEntity
     public int FollowUpCount { get; set; }
     public int InboundWords { get; set; }
     public DateTime? LastInboundAt { get; set; }
+
+    // ---- Memória comercial (Roberta 4.0) ----
+    /// <summary>Optimistic concurrency token, bumped on every state update so simultaneous messages cannot silently overwrite each other.</summary>
+    [ConcurrencyCheck] public int StateVersion { get; set; }
+    /// <summary>Unconfirmed guesses about the lead (never stated to the client as fact).</summary>
+    [MaxLength(600)] public string? Hypotheses { get; set; }
+    /// <summary>What the lead said about the impact/frequency of the problem (confirmed by the lead).</summary>
+    [MaxLength(500)] public string? ImpactNotes { get; set; }
+    public bool ImpactKnown { get; set; }
+    /// <summary>Commitments made in the conversation (e.g. "enviar material", "retomar amanhã à tarde").</summary>
+    [MaxLength(500)] public string? Commitments { get; set; }
+    /// <summary>texto | audio | null (when the lead expressed a channel preference).</summary>
+    [MaxLength(10)] public string? PreferredChannel { get; set; }
+    [MaxLength(80)] public string? PreferredTime { get; set; }
+    /// <summary>descoberta | aprofundamento | apresentacao | demo | transferido | pausado | encerrado.</summary>
+    [MaxLength(20)] public string OpportunityStage { get; set; } = "descoberta";
+    /// <summary>Consecutive disengagement signals (monosyllables, ignored questions).</summary>
+    public int LossSignals { get; set; }
+    /// <summary>Last actions taken, newest last (csv), used to avoid repeating what did not work.</summary>
+    [MaxLength(300)] public string? ActionHistory { get; set; }
+    /// <summary>Every objection occurrence (csv of objection codes), used to count repeats.</summary>
+    [MaxLength(300)] public string? ObjectionLog { get; set; }
+    public bool AiDisclosed { get; set; }
+    [MaxLength(40)] public string? LastInboundHash { get; set; }
+    [MaxLength(60)] public string? Strategy { get; set; }
+    /// <summary>Distinct pain categories voiced by the lead (csv), so a second pain is never lost.</summary>
+    [MaxLength(120)] public string? PainCategories { get; set; }
+    /// <summary>True only while processing a message that arrived after a long silence (not persisted).</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped] public bool Returned { get; set; }
+}
+
+/// <summary>Conversation state used by Shadow mode so that simulations never change the real commercial memory of a lead.</summary>
+public class ShadowConversationState : BaseEntity
+{
+    public int LeadId { get; set; }
+    public string Json { get; set; } = "{}";
 }
 
 public class PromptVersion : BaseEntity
@@ -90,6 +126,9 @@ public class SdrSuggestion : BaseEntity
     [MaxLength(2000)] public string? EditedReply { get; set; }
     /// <summary>text | audio | audio_text (decided by the format advisor).</summary>
     [MaxLength(20)] public string? Format { get; set; }
+    /// <summary>Selected commercial strategy (snake_case) and the objection handled, for audit and metrics.</summary>
+    [MaxLength(60)] public string? Strategy { get; set; }
+    [MaxLength(40)] public string? ObjectionKind { get; set; }
     public bool ValidatorOk { get; set; }
     [MaxLength(1000)] public string? ValidatorIssues { get; set; }
     public string? ContextJson { get; set; }

@@ -1,5 +1,10 @@
 # Changelog
 
+## Roberta 4.0 — Agente comercial adaptativa (sobre `0a5629d`)
+- Motor com ações flexíveis, objeções, plano validável, memória com hipóteses, anti-repetição. Ver `ROBERTA_4.md`.
+- Shadow isolado, dedupe/concorrência, política de follow-up, métricas, prompt v3 (transparência sobre IA).
+- Migration `Roberta4` (aditiva). 306 testes.
+
 ## Roberta 3.0 — SDR vendedora (sobre `222805d`)
 - Venda consultiva: dor declarada → `DeepenPain` → `PitchFeature` → demo/transferência (não transfere mais ao achar a dor). Ver `ROBERTA_3.md`.
 - "Feeling comercial" persistido (temperatura, intenção, engajamento, dor principal, estilo, objetivo) + migration `RobertaSalesFeeling`.

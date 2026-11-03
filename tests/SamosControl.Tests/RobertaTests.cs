@@ -96,7 +96,7 @@ public class RobertaEngineTests
     [InlineData("Vocês são chatos", "HandoffToSeller")]
     [InlineData("Não somos uma loja", "CloseConversation")]
     [InlineData("Oi|Talvez", "AskCurrentERP,AskStoreCount")]
-    [InlineData("Oi|ok|ok|ok|ok", "AskCurrentERP,AskStoreCount,AskPainPoint,OfferDemo,HandoffToSeller")]
+    [InlineData("Oi|ok|ok|ok|ok", "AskCurrentERP,AskStoreCount,AskPainPoint,PauseConversation,CloseConversation")]
     [InlineData("Oi|Não|Não|Não|Não", "AskCurrentERP,AskStoreCount,OfferDemo,CloseConversation,CloseConversation")]
     [InlineData("Oi|Uso Bling|2 lojas|Tá tudo bem, sem problemas", "AskCurrentERP,AskStoreCount,AskPainPoint,OfferDemo")]
     [InlineData("Oi|Tenho 1 loja|Na verdade tenho 15 lojas", "AskCurrentERP,AskPainPoint,HandoffToSeller")]
@@ -246,6 +246,22 @@ public class RobertaFlowTests
     }
 
     [Fact]
+    public async Task Duplicate_inbound_does_not_advance_the_conversation_twice_and_identity_question_gets_the_fixed_honest_answer()
+    {
+        var llm = new FakeLlm(); llm.Replies.Enqueue("Quantas lojas vocês têm hoje?");
+        using var h = new TestHost(configure: s => s.AddScoped<ILlmService>(_ => llm)); using var sc = h.Scope();
+        var (c, db, sdr) = await Setup(sc, SdrMode.Review);
+        await sdr.HandleReplyAsync(null, c.Phone, "Uso o Bling aqui na loja");
+        await sdr.HandleReplyAsync(null, c.Phone, "Uso o Bling aqui na loja");
+        Assert.Equal(1, await db.SdrSuggestions.CountAsync());
+        Assert.Equal(1, (await db.ConversationStates.SingleAsync()).TurnCount);
+        await sdr.HandleReplyAsync(null, c.Phone, "Você é uma IA? Estou falando com um robô?");
+        var last = await db.SdrSuggestions.OrderByDescending(x => x.Id).FirstAsync();
+        Assert.Equal("AnswerIdentity", last.Action); Assert.Equal(RobertaService.IdentityReply, last.Reply); Assert.Equal("answer_identity", last.Strategy);
+        Assert.True((await db.ConversationStates.SingleAsync()).AiDisclosed);
+    }
+
+    [Fact]
     public async Task Shadow_mode_records_progression_and_sends_nothing()
     {
         var llm = new FakeLlm(); llm.Replies.Enqueue("Qual sistema vocês usam hoje para vender e controlar o estoque?"); llm.Replies.Enqueue("Quantas lojas vocês têm hoje?");
@@ -257,8 +273,11 @@ public class RobertaFlowTests
         Assert.Equal(new[] { "AskCurrentERP", "AskStoreCount" }, sugs.Select(x => x.Action));
         Assert.All(sugs, x => { Assert.Equal(SuggestionStatus.Shadow, x.Status); Assert.True(x.ValidatorOk); Assert.Equal(1, x.PromptVersion); });
         Assert.Equal(0, await db.WhatsAppMessages.CountAsync());
-        var st = await db.ConversationStates.SingleAsync();
-        Assert.Equal("bling", st.CurrentErp); Assert.Equal("erp,stores", st.QuestionsAsked);
+        var st = await db.ShadowConversationStates.SingleAsync();
+        var sh = System.Text.Json.JsonSerializer.Deserialize<ConversationState>(st.Json)!;
+        Assert.Equal("bling", sh.CurrentErp); Assert.Equal("erp,stores", sh.QuestionsAsked);
+        Assert.Empty(await db.ConversationStates.ToListAsync()); // the real commercial state is never touched in shadow
+        Assert.Null((await db.SdrContacts.FindAsync(c.Id))!.Summary);
         Assert.NotEqual(SdrStage.Repassado, (await db.SdrContacts.FindAsync(c.Id))!.Stage);
     }
 
