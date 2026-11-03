@@ -489,9 +489,9 @@ public class VoiceScenarioTests
     public async Task S14b_BothSttFail_AsksToRepeatThenEndsAsFailed()
     {
         var s = new Sim(); s.Speech.RealtimeFails = true; s.Speech.BatchFails = true; s.Start(); await s.WaitOpenerDone();
-        await s.Talk(5); await s.Quiet(7);
+        await s.Talk(7); await s.Quiet(7);
         Assert.True(await s.Until(() => s.Speech.SpokeText("não consegui te ouvir")));
-        await s.Talk(5); await s.Quiet(7);
+        await s.Talk(7); await s.Quiet(7);
         var r = await s.Finish();
         Assert.Equal("stt_failed", r.EndReason);
         Assert.Equal(VoiceCallState.Failed, r.FinalState);
@@ -518,7 +518,7 @@ public class VoiceScenarioTests
         s.Start(); await s.WaitOpenerDone();
         await s.SayAndWaitBrain("como funciona o controle de estoque?");
         Assert.True(await s.Until(() => s.Speech.SpokeText("achei aqui")));
-        Assert.True(s.Speech.SpokeText(s.Opt.FillerText));
+        Assert.True(s.Opt.FillerTexts.Any(f => s.Speech.SpokeText(f)));
         s.Session.RequestEnd("user_hangup");
         var r = await s.Finish();
         var lat = Assert.Single(r.Latencies);

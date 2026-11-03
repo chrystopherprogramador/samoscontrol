@@ -20,7 +20,30 @@ public class VoiceSessionOptions
     public int EndSilenceFrames { get; set; } = 12;
     /// <summary>true = pula o STT em tempo real e usa só o modo em lote.</summary>
     public bool BatchOnly { get; set; }
-    public string FillerText { get; set; } = "Só um instante, deixa eu confirmar isso pra você.";
+    /// <summary>Frases de espera enquanto o cérebro processa; sorteadas sem repetir a anterior.</summary>
+    public string[] FillerTexts { get; set; } =
+    {
+        "Só um instante, deixa eu confirmar isso pra você.",
+        "Hum, deixa eu ver aqui rapidinho.",
+        "Boa pergunta, já te respondo.",
+        "Um segundinho, tô checando isso.",
+        "Pera aí que eu já te falo.",
+        "Deixa eu pensar um pouquinho nisso.",
+        "Já vou te dizer, só um momento.",
+        "Anotei aqui, deixa eu organizar a resposta.",
+        "Entendi. Me dá só um segundo.",
+        "Calma, tô olhando isso agora.",
+    };
+    private int _lastFiller = -1;
+    public string NextFiller()
+    {
+        var f = FillerTexts;
+        if (f.Length == 0) return "Só um instante.";
+        int i;
+        do { i = Random.Shared.Next(f.Length); } while (f.Length > 1 && i == _lastFiller);
+        _lastFiller = i;
+        return f[i];
+    }
     public string NotUnderstoodText { get; set; } = "Desculpa, não consegui te ouvir direito. Pode repetir?";
     public string SilencePromptText { get; set; } = "Alô? Você consegue me ouvir?";
     public string SilenceByeText { get; set; } = "Parece que o áudio ficou sem retorno, então vou encerrar por aqui. Qualquer coisa é só me chamar no WhatsApp. Tchau!";
@@ -359,7 +382,7 @@ public class VoiceSession
             if (first != brainTask)
             {
                 filler = true; _host.Event("filler");
-                if (!await SpeakAsync(_opt.FillerText, id, ct, record: false)) return;
+                if (!await SpeakAsync(_opt.NextFiller(), id, ct, record: false)) return;
                 firstAudio = _player.FirstFrameAt;
                 var rest = Math.Max(1, _opt.BrainTimeoutMs - _opt.FillerAfterMs);
                 var second = await Task.WhenAny(brainTask, Task.Delay(TimeSpan.FromMilliseconds(rest), _clock, ct));
