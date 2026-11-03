@@ -1,0 +1,44 @@
+@model List<PromptVersion>
+@{
+    ViewData["Title"] = "Prompts da Roberta";
+    var execs = (List<LlmExecution>)ViewBag.Executions;
+}
+<div class="d-flex gap-2 mb-3"><a class="btn btn-sm btn-outline-secondary" asp-action="Index">Campanhas</a><a class="btn btn-sm btn-outline-secondary" asp-action="Suggestions">Sugestões</a></div>
+<div class="alert alert-info small">Cada resposta registra a versão do prompt que a gerou. Ao ativar, roda-se uma regressão (mínimo @PromptService.MinPassRate% e sem piorar a versão ativa). Sem IA configurada só é possível ativar com "forçar".</div>
+<div class="card mb-3"><div class="card-header">Nova versão</div><div class="card-body">
+    <form method="post" asp-action="PromptCreate">
+        <textarea name="content" class="form-control mb-2" rows="8" required>@(Model.FirstOrDefault(x => x.IsActive)?.Content ?? PromptService.DefaultContent)</textarea>
+        <input name="notes" class="form-control mb-2" maxlength="500" placeholder="Notas da versão" />
+        <button class="btn btn-primary btn-sm">Criar versão (inativa)</button>
+    </form>
+</div></div>
+@foreach (var p in Model)
+{
+    <div class="card mb-2"><div class="card-body">
+        <div class="d-flex gap-2 align-items-center">
+            <strong>v@(p.Version)</strong>
+            @if (p.IsActive) { <span class="badge bg-success">ativa</span> }
+            @if (p.PassRate.HasValue) { <span class="badge bg-secondary">regressão @p.PassRate%</span> }
+            <span class="text-muted small">@p.CreatedBy · @p.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm") @p.Notes</span>
+            @if (!p.IsActive)
+            {
+                <form method="post" asp-action="PromptActivate" class="ms-auto d-flex gap-2 align-items-center">
+                    <input type="hidden" name="id" value="@p.Id" />
+                    <div class="form-check"><input class="form-check-input" type="checkbox" name="force" value="true" /><label class="form-check-label small">forçar</label></div>
+                    <button class="btn btn-sm btn-outline-primary">Ativar</button>
+                </form>
+            }
+        </div>
+        <details><summary class="small">Conteúdo</summary><pre class="small mb-0" style="white-space:pre-wrap">@p.Content</pre></details>
+    </div></div>
+}
+<h6 class="mt-4">Últimas execuções da LLM</h6>
+<div class="table-responsive"><table class="table table-sm small">
+    <thead><tr><th>Quando</th><th>Tarefa</th><th>Prompt</th><th>Provedor</th><th>Ação</th><th>ms</th><th>Erro</th></tr></thead>
+    <tbody>
+    @foreach (var e in execs)
+    {
+        <tr><td>@e.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm:ss")</td><td>@e.Task</td><td>@e.PromptName v@e.PromptVersion</td><td>@e.Provider</td><td>@e.Action</td><td>@e.LatencyMs</td><td class="text-danger">@e.Error</td></tr>
+    }
+    </tbody>
+</table></div>

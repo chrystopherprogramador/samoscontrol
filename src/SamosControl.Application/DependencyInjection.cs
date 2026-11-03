@@ -76,6 +76,9 @@ public static class DependencyInjection
         s.AddScoped<PersonalService>();
         s.AddScoped<MapService>();
         s.AddScoped<KnowledgeService>();
+        s.AddScoped<ILlmService, LlmService>();
+        s.AddScoped<PromptService>();
+        s.AddScoped<RobertaService>();
         s.AddScoped<SdrService>();
         foreach (var t in new[]
         {

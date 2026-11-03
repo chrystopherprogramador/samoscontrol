@@ -41,6 +41,10 @@ public class AppDbContext : DbContext
     public DbSet<SdrCampaign> SdrCampaigns => Set<SdrCampaign>();
     public DbSet<SdrContact> SdrContacts => Set<SdrContact>();
     public DbSet<AiKnowledge> AiKnowledge => Set<AiKnowledge>();
+    public DbSet<ConversationState> ConversationStates => Set<ConversationState>();
+    public DbSet<PromptVersion> PromptVersions => Set<PromptVersion>();
+    public DbSet<SdrSuggestion> SdrSuggestions => Set<SdrSuggestion>();
+    public DbSet<LlmExecution> LlmExecutions => Set<LlmExecution>();
     public DbSet<AutomationJob> AutomationJobs => Set<AutomationJob>();
     public DbSet<AutomationExecution> AutomationExecutions => Set<AutomationExecution>();
     public DbSet<AutomationLog> AutomationLogs => Set<AutomationLog>();
@@ -187,6 +191,11 @@ public class AppDbContext : DbContext
         b.Entity<SdrContact>().HasIndex(x => x.PhoneKey);
         b.Entity<SdrContact>().HasIndex(x => new { x.CampaignId, x.Stage, x.NextActionAt });
         b.Entity<AiKnowledge>().HasIndex(x => x.Status);
+        b.Entity<ConversationState>().HasIndex(x => x.LeadId).IsUnique();
+        b.Entity<PromptVersion>().HasIndex(x => new { x.Name, x.Version }).IsUnique();
+        b.Entity<SdrSuggestion>().HasIndex(x => new { x.Status, x.CreatedAt });
+        b.Entity<SdrSuggestion>().HasIndex(x => x.ContactId);
+        b.Entity<LlmExecution>().HasIndex(x => x.CreatedAt);
 
         b.Entity<AutomationJob>(e => { e.HasIndex(x => new { x.IsEnabled, x.NextRunAt }); });
         b.Entity<AutomationExecution>(e =>

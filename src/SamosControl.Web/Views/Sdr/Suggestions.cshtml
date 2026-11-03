@@ -1,0 +1,44 @@
+@model List<SdrSuggestion>
+@{
+    ViewData["Title"] = "Sugestões da Roberta";
+    var status = (SuggestionStatus?)ViewBag.Status;
+    var all = new[] { SuggestionStatus.Pendente, SuggestionStatus.Shadow, SuggestionStatus.Aprovada, SuggestionStatus.Editada, SuggestionStatus.Rejeitada, SuggestionStatus.Enviada };
+}
+<div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
+    <a class="btn btn-sm @(status == null ? "btn-primary" : "btn-outline-secondary")" asp-action="Suggestions">Pendentes + Shadow</a>
+    @foreach (var s in all) { <a class="btn btn-sm @(status == s ? "btn-primary" : "btn-outline-secondary")" asp-action="Suggestions" asp-route-status="@s">@s</a> }
+    <a class="btn btn-sm btn-outline-secondary ms-auto" asp-action="Index">Campanhas</a>
+</div>
+<div class="alert alert-info small">Shadow: a Roberta só registra o que responderia (nada é enviado). Revisão: aprove, edite ou rejeite; aprovar envia a mensagem.</div>
+@if (!Model.Any()) { <div class="text-muted">Nenhuma sugestão.</div> }
+@foreach (var s in Model)
+{
+    var scores = string.IsNullOrEmpty(s.ScoresJson) ? new Dictionary<string, int>() : System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(s.ScoresJson)!;
+    <div class="card mb-3"><div class="card-body">
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+            <strong>@(s.Contact?.Lead?.Name ?? ("Lead " + s.LeadId))</strong>
+            <span class="badge bg-secondary">@s.Status</span>
+            <span class="badge bg-primary">@s.Action</span>
+            <span class="badge @(s.ValidatorOk ? "bg-success" : "bg-danger")">validador: @(s.ValidatorOk ? "OK" : "reprovou")</span>
+            <span class="text-muted small ms-auto">@s.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm") · prompt v@s.PromptVersion</span>
+        </div>
+        <div class="small text-muted">Lead disse</div>
+        <div class="mb-2">@s.InboundText</div>
+        <div class="small text-muted">Roberta responderia</div>
+        <div class="mb-2 p-2 rounded border">@(string.IsNullOrWhiteSpace(s.Reply) ? "— (sem mensagem: ação sem texto, ex. repasse ao vendedor)" : s.Reply)</div>
+        @if (!string.IsNullOrWhiteSpace(s.ValidatorIssues)) { <div class="small text-danger mb-2">Problemas: @s.ValidatorIssues</div> }
+        <div class="small text-muted mb-2">@string.Join(" · ", scores.Select(x => x.Key.Replace("Score", "") + " " + x.Value))</div>
+        <details class="mb-2"><summary class="small">Contexto usado</summary><pre class="small mb-0" style="white-space:pre-wrap">@s.ContextJson</pre></details>
+        @if (s.Status == SuggestionStatus.Pendente)
+        {
+            <form method="post" asp-action="Review" class="d-flex flex-wrap gap-2 align-items-start">
+                <input type="hidden" name="id" value="@s.Id" />
+                <textarea name="edited" class="form-control" rows="2" style="max-width:520px" placeholder="Editar a mensagem (opcional, use 'Editar e enviar')">@s.Reply</textarea>
+                <button name="decision" value="approve" class="btn btn-success btn-sm">Aprovar e enviar</button>
+                <button name="decision" value="edit" class="btn btn-outline-primary btn-sm">Editar e enviar</button>
+                <button name="decision" value="reject" class="btn btn-outline-danger btn-sm">Rejeitar</button>
+            </form>
+        }
+        else if (s.ReviewedBy != null) { <div class="small text-muted">Revisada por @s.ReviewedBy @(s.EditedReply != null ? "· versão editada: " + s.EditedReply : "")</div> }
+    </div></div>
+}

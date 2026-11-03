@@ -23,6 +23,8 @@ public class SdrCampaign : BaseEntity
     public int MaxFollowUps { get; set; } = 2;
     [MaxLength(2000)] public string? Pitch { get; set; }
     public bool AiReplies { get; set; } = true;
+    /// <summary>Roberta 2.0 mode. Default Shadow: records proposals, never sends AI replies.</summary>
+    public SdrMode Mode { get; set; } = SdrMode.Shadow;
     public int HandoffAlertMinutes { get; set; } = 15;
     public LeadStatus? FilterStatus { get; set; } = LeadStatus.Novo;
     [MaxLength(2)] public string? FilterState { get; set; }

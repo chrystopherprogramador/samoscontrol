@@ -7,6 +7,13 @@
     <input type="hidden" asp-for="Id" />
     <div class="col-md-8"><label class="form-label">Nome da campanha *</label><input asp-for="Name" class="form-control" maxlength="120" required /></div>
     <div class="col-md-4 align-self-end"><div class="form-check"><input asp-for="AiReplies" class="form-check-input" /><label class="form-check-label" asp-for="AiReplies">IA responde o lead</label></div></div>
+    <div class="col-md-6"><label class="form-label">Modo da Roberta</label>
+        <select asp-for="Mode" class="form-select">
+            <option value="Shadow">Shadow — gera e registra, NÃO envia</option>
+            <option value="Review">Revisão — um humano aprova cada resposta</option>
+            <option value="Auto">Automático — envia sozinha</option>
+        </select></div>
+    <div class="col-md-6"><label class="form-label">Confirmação para o modo Automático</label><input name="autoConfirm" class="form-control" placeholder="Digite AUTORIZO para habilitar o modo Automático" autocomplete="off" /></div>
 
     <div class="col-12"><h6 class="mb-0">Quem dispara</h6></div>
     <div class="col-md-6"><label class="form-label">Número que envia</label>

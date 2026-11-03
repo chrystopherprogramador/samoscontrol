@@ -149,8 +149,56 @@ public class SdrService
     private readonly KnowledgeService _kb;
     private readonly NotificationService _notify;
     private readonly ILogger<SdrService> _log;
-    public SdrService(AppDbContext db, WhatsAppService wa, IAiProvider ai, KnowledgeService kb, NotificationService notify, ILogger<SdrService> log)
-    { _db = db; _wa = wa; _ai = ai; _kb = kb; _notify = notify; _log = log; }
+    private readonly RobertaService _roberta;
+    public SdrService(AppDbContext db, WhatsAppService wa, IAiProvider ai, KnowledgeService kb, NotificationService notify, ILogger<SdrService> log, RobertaService roberta)
+    { _db = db; _wa = wa; _ai = ai; _kb = kb; _notify = notify; _log = log; _roberta = roberta; }
+
+    /// <summary>Carries out a decided action (Auto mode, or a human-approved suggestion in Review mode).</summary>
+    public async Task ExecuteAsync(SdrCampaign c, SdrContact contact, Lead lead, RobertaAction action, string? reply, string lastMessage, string reason, bool viaAudio, bool humanize, CancellationToken ct = default)
+    {
+        switch (action)
+        {
+            case RobertaAction.HandoffToSeller:
+                await HandoffAsync(c, contact, lead, lastMessage, reason, ct);
+                return;
+            case RobertaAction.DoNotContact:
+                contact.Stage = SdrStage.OptOut;
+                await _db.SaveChangesAsync(ct);
+                await SafeSendAsync(c, contact.Phone, reply ?? RobertaService.GoodbyeOptOut, ct);
+                return;
+            case RobertaAction.CloseConversation:
+                contact.Stage = SdrStage.Encerrado; contact.NextActionAt = null;
+                await _db.SaveChangesAsync(ct);
+                await SafeSendAsync(c, contact.Phone, reply ?? RobertaService.GoodbyeClose, ct);
+                return;
+        }
+        if (string.IsNullOrWhiteSpace(reply)) return;
+        contact.AiTurns++;
+        await _db.SaveChangesAsync(ct);
+        if (humanize) await Task.Delay(Random.Shared.Next(4000, 9000), ct);
+        try { await _wa.SendReplyAsync(c.SellerId, contact.Phone, reply, viaAudio, null, true, ct); }
+        catch (Exception ex) { _log.LogWarning(ex, "SDR: falha ao enviar resposta"); }
+    }
+
+    /// <summary>Review mode: a human approves, edits or rejects a suggestion. Approving executes it.</summary>
+    public async Task<string> ReviewAsync(int suggestionId, string decision, string? edited, string reviewer, CancellationToken ct = default)
+    {
+        var s = await _db.SdrSuggestions.Include(x => x.Contact).ThenInclude(x => x!.Campaign).Include(x => x.Contact).ThenInclude(x => x!.Lead).FirstOrDefaultAsync(x => x.Id == suggestionId, ct);
+        if (s == null) return "Sugestão não encontrada.";
+        if (s.Status != SuggestionStatus.Pendente) return "Esta sugestão já foi tratada.";
+        s.ReviewedBy = reviewer; s.ReviewedAt = DateTime.UtcNow;
+        if (decision == "reject") { s.Status = SuggestionStatus.Rejeitada; await _db.SaveChangesAsync(ct); return "Sugestão rejeitada."; }
+        var contact = s.Contact!; var c = contact.Campaign!;
+        if (contact.Stage is not (SdrStage.Enviado or SdrStage.Respondeu or SdrStage.OptOut))
+        { s.Status = SuggestionStatus.Rejeitada; await _db.SaveChangesAsync(ct); return "O contato já mudou de estágio; sugestão descartada."; }
+        var action = Enum.Parse<RobertaAction>(s.Action);
+        var text = decision == "edit" && !string.IsNullOrWhiteSpace(edited) ? edited.Trim() : s.Reply;
+        s.EditedReply = decision == "edit" ? text : null;
+        s.Status = decision == "edit" ? SuggestionStatus.Editada : SuggestionStatus.Aprovada;
+        await _db.SaveChangesAsync(ct);
+        await ExecuteAsync(c, contact, contact.Lead!, action, text, s.InboundText, "Aprovado em revisão", false, false, ct);
+        return "Enviado.";
+    }
 
     public static string Render(string template, Lead l)
     {
@@ -307,42 +355,37 @@ public class SdrService
             var c = contact.Campaign!; var lead = contact.Lead!;
             contact.RepliedAt ??= DateTime.UtcNow; contact.Stage = SdrStage.Respondeu; contact.NextActionAt = null;
 
-            if (OptOut.IsMatch(text))
+            if (!c.AiReplies && c.Mode == SdrMode.Auto)
+            {
+                await HandoffAsync(c, contact, lead, text, "IA desligada nesta campanha.", ct);
+                return;
+            }
+
+            // Roberta 2.0: state → deterministic decision → LLM phrases → validator. The mode decides what is done with the result.
+            var hist = await LoadHistoryAsync(contact.Phone, c.SellerId, ct);
+            var p = await _roberta.ProposeAsync(contact, lead, text, hist, ct);
+            var sug = p.Suggestion;
+            contact.Score = Math.Clamp(p.State.InterestLevel * 33, 0, 100);
+            contact.Summary = p.State.Summary;
+            if (p.Decision.Action == RobertaAction.DoNotContact)
             {
                 contact.Stage = SdrStage.OptOut;
                 _db.Interactions.Add(new Interaction { LeadId = lead.Id, Type = InteractionType.Sistema, Description = "Lead pediu para não receber mais contatos (SDR)." });
+            }
+
+            if (c.Mode == SdrMode.Shadow) { sug.Status = SuggestionStatus.Shadow; await _db.SaveChangesAsync(ct); return; }
+            if (c.Mode == SdrMode.Review)
+            {
+                foreach (var old in await _db.SdrSuggestions.Where(x => x.ContactId == contact.Id && x.Status == SuggestionStatus.Pendente && x.Id != sug.Id).ToListAsync(ct))
+                { old.Status = SuggestionStatus.Rejeitada; old.ReviewedBy = "sistema (substituída por mensagem mais nova)"; old.ReviewedAt = DateTime.UtcNow; }
+                sug.Status = SuggestionStatus.Pendente;
                 await _db.SaveChangesAsync(ct);
-                await SafeSendAsync(c, contact.Phone, "Tudo bem, não vamos mais te chamar. Obrigado pelo retorno!", ct);
+                await _notify.CreateAsync(NotificationType.Info, NotificationSource.Crm, "Roberta aguarda revisão", $"{lead.Name}: ação {p.Decision.Action}", "/Sdr/Suggestions");
                 return;
             }
-
-            var hist = await LoadHistoryAsync(contact.Phone, c.SellerId, ct);
-            AiTurn? turn = null;
-            if (c.AiReplies && _ai.IsConfigured && contact.AiTurns < 6)
-            {
-                try { turn = await AskAiAsync(c, lead, text, hist, ct); }
-                catch (Exception ex) { _log.LogWarning(ex, "SDR: IA indisponível, repassando ao vendedor"); }
-            }
-
-            var wantsHuman = HandoffWords.IsMatch(text);
-            if (turn != null && !string.IsNullOrWhiteSpace(turn.Gap))
-            {
-                await _kb.RegisterGapAsync(turn.Gap, lead.Id);
-                turn = turn with { Handoff = true, Reason = "Pergunta fora da base de conhecimento: " + turn.Gap };
-            }
-            if (turn != null) { contact.Score = Math.Clamp(turn.Score, 0, 100); if (!string.IsNullOrWhiteSpace(turn.Summary)) contact.Summary = turn.Summary.Truncate(1400); }
-
-            if (turn == null || turn.Handoff || wantsHuman || contact.Score >= 70)
-            {
-                var reason = turn?.Reason is { Length: > 0 } r ? r : wantsHuman ? "O lead pediu preço/proposta/atendente." : turn == null ? "Sem IA disponível ou limite de respostas automáticas." : "Lead qualificado.";
-                await HandoffAsync(c, contact, lead, text, reason, ct);
-                return;
-            }
-            contact.AiTurns++;
+            sug.Status = SuggestionStatus.Enviada;
             await _db.SaveChangesAsync(ct);
-            await Task.Delay(Random.Shared.Next(4000, 9000), ct);
-            try { await _wa.SendReplyAsync(c.SellerId, contact.Phone, turn.Reply, viaAudio, null, true, ct); }
-            catch (Exception ex) { _log.LogWarning(ex, "SDR: falha ao enviar resposta"); }
+            await ExecuteAsync(c, contact, lead, p.Decision.Action, p.Reply, text, p.Decision.Reason, viaAudio, true, ct);
         }
         finally { gate.Release(); }
     }

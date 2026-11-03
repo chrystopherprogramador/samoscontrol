@@ -12,7 +12,52 @@ public class SdrController : AppController
 {
     private readonly AppDbContext _db;
     private readonly SdrService _sdr;
-    public SdrController(AppDbContext db, SdrService sdr) { _db = db; _sdr = sdr; }
+    private readonly AuditService _audit;
+    private readonly PromptService _prompts;
+    public SdrController(AppDbContext db, SdrService sdr, AuditService audit, PromptService prompts) { _db = db; _sdr = sdr; _audit = audit; _prompts = prompts; }
+
+    public async Task<IActionResult> Suggestions(SuggestionStatus? status)
+    {
+        var q = _db.SdrSuggestions.Include(x => x.Contact).ThenInclude(x => x!.Lead).AsQueryable();
+        q = status.HasValue ? q.Where(x => x.Status == status) : q.Where(x => x.Status == SuggestionStatus.Pendente || x.Status == SuggestionStatus.Shadow);
+        ViewBag.Status = status;
+        return View(await q.OrderByDescending(x => x.Id).Take(100).ToListAsync());
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Review(int id, string decision, string? edited)
+    {
+        var msg = await _sdr.ReviewAsync(id, decision, edited, User.Identity?.Name ?? "?");
+        await _audit.LogAsync("sdr", "review_" + decision, "SdrSuggestion", id);
+        Flash(msg);
+        return RedirectToAction(nameof(Suggestions));
+    }
+
+    public async Task<IActionResult> Prompts()
+    {
+        await _prompts.ActiveAsync();
+        ViewBag.Executions = await _db.LlmExecutions.OrderByDescending(x => x.Id).Take(30).ToListAsync();
+        return View(await _db.PromptVersions.Where(x => x.Name == PromptService.Name).OrderByDescending(x => x.Version).ToListAsync());
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> PromptCreate(string content, string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(content) || content.Length < 50) { FlashFail("Informe o conteúdo do prompt (mínimo 50 caracteres)."); return RedirectToAction(nameof(Prompts)); }
+        var p = await _prompts.CreateAsync(content, notes, User.Identity?.Name);
+        await _audit.LogAsync("sdr", "prompt_create", "PromptVersion", p.Id);
+        Flash($"Versão {p.Version} criada (inativa). Ative para rodar a regressão.");
+        return RedirectToAction(nameof(Prompts));
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> PromptActivate(int id, bool force)
+    {
+        var (ok, msg) = await _prompts.ActivateAsync(id, force);
+        await _audit.LogAsync("sdr", "prompt_activate", "PromptVersion", id, newData: $"ok={ok}; force={force}; {msg}");
+        if (ok) Flash(msg); else FlashFail(msg);
+        return RedirectToAction(nameof(Prompts));
+    }
 
     public async Task<IActionResult> Index()
     {
@@ -34,7 +79,7 @@ public class SdrController : AppController
     }
 
     [HttpPost]
-    public async Task<IActionResult> Save(SdrCampaign f)
+    public async Task<IActionResult> Save(SdrCampaign f, string? autoConfirm)
     {
         try
         {
@@ -47,6 +92,12 @@ public class SdrController : AppController
             c.MinDelaySec = Math.Max(20, f.MinDelaySec); c.MaxDelaySec = Math.Max(c.MinDelaySec, f.MaxDelaySec);
             c.Variants = f.Variants.Trim(); c.FollowUpText = f.FollowUpText?.Trim(); c.FollowUpHours = Math.Max(1, f.FollowUpHours); c.MaxFollowUps = Math.Clamp(f.MaxFollowUps, 0, 3);
             c.Pitch = f.Pitch?.Trim(); c.AiReplies = f.AiReplies; c.HandoffAlertMinutes = Math.Max(1, f.HandoffAlertMinutes);
+            if (f.Mode == SdrMode.Auto && c.Mode != SdrMode.Auto)
+            {
+                if (!string.Equals(autoConfirm?.Trim(), "AUTORIZO", StringComparison.Ordinal)) throw new ArgumentException("O modo Automático exige digitar AUTORIZO no campo de confirmação.");
+                await _audit.LogAsync("sdr", "enable_auto_mode", "SdrCampaign", c.Id, newData: "Modo Automático autorizado explicitamente");
+            }
+            c.Mode = f.Mode;
             c.FilterStatus = f.FilterStatus; c.FilterState = string.IsNullOrWhiteSpace(f.FilterState) ? null : f.FilterState.Trim().ToUpperInvariant(); c.FilterSegment = f.FilterSegment?.Trim();
             if (f.Id == 0) _db.SdrCampaigns.Add(c);
             await _db.SaveChangesAsync();
