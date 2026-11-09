@@ -91,7 +91,7 @@ public static class DependencyInjection
             typeof(QueryServicesTool), typeof(CompanySummaryTool), typeof(CreateJobTool), typeof(SyncLeadsTool), typeof(CreateLeadSearchTool),
             typeof(CreateChargeTool), typeof(SendWhatsAppTool),
             typeof(AddTaskTool), typeof(ListTasksTool), typeof(CompleteTaskTool), typeof(RescheduleTaskTool), typeof(DeleteTaskTool),
-            typeof(AddNoteTool), typeof(SearchNotesTool), typeof(DeleteNoteTool), typeof(AddExpenseTool), typeof(ExpenseSummaryTool)
+            typeof(AddNoteTool), typeof(RememberFactTool), typeof(SearchNotesTool), typeof(DeleteNoteTool), typeof(AddExpenseTool), typeof(ExpenseSummaryTool)
         }) s.AddScoped(typeof(IAgentTool), t);
 
         if (runWorkers)

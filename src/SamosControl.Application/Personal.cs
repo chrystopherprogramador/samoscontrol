@@ -18,6 +18,7 @@ public class PersonalService
     private readonly ILogger<PersonalService> _log;
     public PersonalService(AppDbContext db, WhatsAppService wa, NotificationService n, ILogger<PersonalService> log) { _db = db; _wa = wa; _notif = n; _log = log; }
 
+    public const string MemoryTag = "memoria";
     public static string Money(decimal v) => v.ToString("C2", BR);
 
     public static int? RepeatToMinutes(string? s)
@@ -300,6 +301,19 @@ public class AddNoteTool : PersonalToolBase
     {
         var n = await P.AddNoteAsync(Uid(ctx), Arg(a, "titulo"), Arg(a, "texto") ?? "", Arg(a, "tag"));
         return $"📝 Nota #{n.Id} salva" + (n.Tag != null ? $" ({n.Tag})" : "") + ".";
+    }
+}
+
+public class RememberFactTool : PersonalToolBase
+{
+    public RememberFactTool(PersonalService p) : base(p) { }
+    public override string Name => "lembrar_fato";
+    public override string Description => "Guarda na memória de longo prazo algo duradouro sobre o usuário (preferência, família, rotina, nomes). Para esquecer, use apagar_nota com o número";
+    public override string ArgsHelp => "{\"texto\":\"fato curto, ex.: Minha esposa se chama Ana\"}";
+    public override async Task<string> ExecuteAsync(AgentContext ctx, JsonObject a, CancellationToken ct)
+    {
+        var n = await P.AddNoteAsync(Uid(ctx), null, Arg(a, "texto") ?? "", PersonalService.MemoryTag);
+        return $"🧠 Guardei (#{n.Id}): {n.Text.Truncate(150)}";
     }
 }
 

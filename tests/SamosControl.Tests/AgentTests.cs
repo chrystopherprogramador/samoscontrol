@@ -59,6 +59,48 @@ public class AgentTests
         Assert.True((await db.PersonalTasks.SingleAsync()).Done);
     }
 
+    private sealed class ScriptedAi : SamosControl.Integrations.IAiProvider
+    {
+        public readonly Queue<string> Replies = new();
+        public readonly List<string> Systems = new();
+        public string Name => "script"; public bool IsConfigured => true;
+        public Task<List<string>> ListModelsAsync(CancellationToken ct = default) => Task.FromResult(new List<string>());
+        public Task<string> ChatAsync(IEnumerable<SamosControl.Integrations.AiChatMessage> messages, bool jsonMode, CancellationToken ct = default)
+        {
+            Systems.Add(messages.First().Content);
+            return Task.FromResult(Replies.Count > 0 ? Replies.Dequeue() : "{\"reply\":\"ok\"}");
+        }
+    }
+
+    [Fact]
+    public async Task PlainTextLlmReply_IsReturnedAsConversation_NotHelpMenu()
+    {
+        var ai = new ScriptedAi(); ai.Replies.Enqueue("Bom dia! Tudo certo por aqui 😊");
+        using var h = new TestHost(AsaasCfg, s => s.AddSingleton<SamosControl.Integrations.IAiProvider>(ai)); using var sc = h.Scope();
+        var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
+        var u = await SeedAsync(db, Perm.AiUse);
+        var reply = await sc.ServiceProvider.GetRequiredService<SamosAgent>().HandleAsync("bom dia", new AgentContext(u.Id, "Op", "WHATSAPP", null));
+        Assert.Equal("Bom dia! Tudo certo por aqui 😊", reply);
+    }
+
+    [Fact]
+    public async Task RememberedFact_IsStored_AndInjectedIntoNextPrompt()
+    {
+        var ai = new ScriptedAi();
+        ai.Replies.Enqueue("{\"tool\":\"lembrar_fato\",\"args\":{\"texto\":\"Minha esposa se chama Ana\"}}");
+        ai.Replies.Enqueue("{\"reply\":\"Guardado!\"}");
+        ai.Replies.Enqueue("{\"reply\":\"Ana.\"}");
+        using var h = new TestHost(AsaasCfg, s => s.AddSingleton<SamosControl.Integrations.IAiProvider>(ai)); using var sc = h.Scope();
+        var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
+        var u = await SeedAsync(db, Perm.AiUse);
+        var agent = sc.ServiceProvider.GetRequiredService<SamosAgent>();
+        var ctx = new AgentContext(u.Id, "Op", "WHATSAPP", null);
+        await agent.HandleAsync("minha esposa se chama Ana", ctx);
+        Assert.Equal(PersonalService.MemoryTag, (await db.PersonalNotes.SingleAsync()).Tag);
+        await agent.HandleAsync("qual o nome dela?", ctx);
+        Assert.Contains("Minha esposa se chama Ana", ai.Systems.Last());
+    }
+
     [Fact]
     public async Task PersonalExpense_IsRecorded_ViaAgent()
     {

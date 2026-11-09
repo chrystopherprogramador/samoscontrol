@@ -78,7 +78,7 @@ public class SamosAgent
         var chat = new List<AiChatMessage>();
         if (useLlm)
         {
-            chat.Add(new AiChatMessage("system", BuildPrompt(allowed, ctx)));
+            chat.Add(new AiChatMessage("system", BuildPrompt(allowed, ctx, await PersonalContextAsync(ctx, ct))));
             chat.AddRange(await LoadHistoryAsync(ctx, ct));
             chat.Add(new AiChatMessage("user", message));
         }
@@ -90,7 +90,14 @@ public class SamosAgent
             string? raw = null;
             if (useLlm)
             {
-                try { raw = await _ai.ChatAsync(chat, true, ct); intent = ParseLlm(raw); }
+                try
+                {
+                    raw = await _ai.ChatAsync(chat, true, ct);
+                    intent = ParseLlm(raw);
+                    // Modelo respondeu em texto puro (sem JSON): é uma resposta de conversa, não um erro.
+                    if (intent == null && !string.IsNullOrWhiteSpace(raw) && !raw.Contains('{') && !raw.Contains('}'))
+                        intent = new Intent(null, new JsonObject(), raw.Trim());
+                }
                 catch (Exception ex) when (ex is IntegrationException or JsonException) { _log.LogWarning("LLM indisponível: {Msg}", ex.Message); }
                 if (intent == null && step > 0) break;
                 if (intent == null) { useLlm = false; }
@@ -153,9 +160,9 @@ public class SamosAgent
 
     private async Task<List<AiChatMessage>> LoadHistoryAsync(AgentContext ctx, CancellationToken ct)
     {
-        var since = DateTime.UtcNow.AddHours(-12);
+        var since = DateTime.UtcNow.AddHours(-24);
         var rows = await _db.AiMessages.Where(m => m.UserId == ctx.UserId && m.Channel == ctx.Channel && m.CreatedAt >= since)
-            .OrderByDescending(m => m.Id).Take(10).ToListAsync(ct);
+            .OrderByDescending(m => m.Id).Take(16).ToListAsync(ct);
         rows.Reverse();
         // O histórico guarda a resposta final em texto; o modelo vê como {"reply": ...} para manter o formato.
         return rows.Select(m => m.Role == "assistant"
@@ -202,16 +209,33 @@ public class SamosAgent
         "Posso ajudar com:\n" + string.Join("\n", tools.Select(t => $"• {t.Description}"));
 
     // ---------- Interpretation ----------
-    private static string BuildPrompt(IEnumerable<IAgentTool> tools, AgentContext ctx)
+    /// <summary>Memória de longo prazo (notas com tag "memoria") e tarefas pendentes, para o modelo entender referências e preferências.</summary>
+    private async Task<string> PersonalContextAsync(AgentContext ctx, CancellationToken ct)
+    {
+        if (!ctx.UserId.HasValue) return "";
+        var uid = ctx.UserId.Value;
+        var sb = new StringBuilder();
+        var facts = await _db.PersonalNotes.Where(n => n.UserId == uid && n.Tag == PersonalService.MemoryTag).OrderByDescending(n => n.Id).Take(20).ToListAsync(ct);
+        if (facts.Count > 0)
+            sb.AppendLine("O que você já sabe sobre o usuário (memória; use naturalmente, sem repetir tudo): " + string.Join(" | ", facts.Select(f => $"#{f.Id} {f.Text.Truncate(200)}")));
+        var tasks = await _db.PersonalTasks.Where(t => t.UserId == uid && !t.Done).OrderBy(t => t.DueAt ?? t.RemindAt ?? DateTime.MaxValue).Take(8).ToListAsync(ct);
+        if (tasks.Count > 0)
+            sb.AppendLine("Próximas tarefas pendentes do usuário (referência para 'adia a do dentista', 'conclui a primeira'): " + string.Join(" ; ", tasks.Select(PersonalService.Fmt)));
+        return sb.ToString();
+    }
+
+    private static string BuildPrompt(IEnumerable<IAgentTool> tools, AgentContext ctx, string personal = "")
     {
         var now = AppTime.Now;
         var sb = new StringBuilder();
-        sb.AppendLine($"Você é o SamosAgent, o assistente pessoal e operacional de {ctx.UserName}, dono/colaborador da empresa Samos. Fale português do Brasil, de forma natural, direta e simpática (pode usar poucos emojis). Você conversa pelo WhatsApp: respostas curtas, sem markdown pesado.");
+        sb.AppendLine($"Você é o SamosAgent, o assistente pessoal e operacional de {ctx.UserName}, dono/colaborador da empresa Samos. Fale português do Brasil, de forma natural, direta e simpática, como um assistente humano de confiança (pode usar poucos emojis). Você conversa pelo WhatsApp: respostas curtas, sem markdown pesado. Pode bater papo, dar opinião, explicar, redigir mensagens e tirar dúvidas gerais com {{\"reply\"}}; use ferramentas só para dados e ações do sistema. Se o pedido for vago, faça UMA pergunta objetiva. Quando fizer sentido, sugira o próximo passo (ex.: 'quer que eu te lembre amanhã?').");
+        if (personal.Length > 0) sb.Append(personal);
         sb.AppendLine($"Agora: {now:yyyy-MM-ddTHH:mm} ({now:dddd}, America/Sao_Paulo). Interprete 'hoje', 'amanhã', 'sexta', 'daqui 2 horas', etc. a partir desta data e sempre envie datas no formato yyyy-MM-ddTHH:mm (horário local). Se o usuário não disser hora para um compromisso, use 09:00.");
         sb.AppendLine("Responda SOMENTE com UM JSON por vez:");
         sb.AppendLine("- Para executar algo: {\"tool\":\"nome\",\"args\":{...}}");
         sb.AppendLine("- Para responder/conversar/perguntar algo que falta: {\"reply\":\"texto\"}");
-        sb.AppendLine("Regras: (1) Para QUALQUER dado da empresa ou da vida pessoal do usuário (tarefas, notas, gastos, agenda) use ferramenta; nunca invente números, ids ou dados. (2) Lembretes, compromissos, contas a pagar e coisas a fazer do usuário => criar_tarefa (não use criar_job). (3) Use o histórico da conversa para entender referências como 'essa', 'adia pra amanhã', 'e a de ontem?'. (4) Se faltar uma informação indispensável (ex.: o valor de um gasto), pergunte em {\"reply\"}. (5) Pedidos com várias partes: execute uma ferramenta por vez. (6) Ações sensíveis pedem confirmação automaticamente; não peça você mesmo.");
+        sb.AppendLine("Regras: (1) Para QUALQUER dado da empresa ou da vida pessoal do usuário (tarefas, notas, gastos, agenda) use ferramenta; nunca invente números, ids ou dados. (2) Lembretes, compromissos, contas a pagar e coisas a fazer do usuário => criar_tarefa (não use criar_job). (3) Use o histórico da conversa para entender referências como 'essa', 'adia pra amanhã', 'e a de ontem?'. (4) Se faltar uma informação indispensável (ex.: o valor de um gasto), pergunte em {\"reply\"}. (5) Pedidos com várias partes: execute uma ferramenta por vez. (6) Ações sensíveis pedem confirmação automaticamente; não peça você mesmo. (7) Quando o usuário disser algo duradouro sobre si (preferência, família, rotina, nome de pessoas, 'a partir de agora...'), guarde com lembrar_fato. (8) Cumprimentos, agradecimentos e conversa comum => {\"reply\"} curto e humano, sem listar suas funções.");
+        sb.AppendLine("Exemplos: 'me lembra de ligar pro João amanhã 10h' => {\"tool\":\"criar_tarefa\",\"args\":{\"titulo\":\"Ligar pro João\",\"quando\":\"<amanhã>T10:00\"}}; 'gastei 45 no mercado' => {\"tool\":\"registrar_gasto\",\"args\":{\"valor\":45,\"descricao\":\"mercado\",\"categoria\":\"mercado\"}}; 'valeu!' => {\"reply\":\"Por nada! 😉\"}.");
         sb.AppendLine("Ferramentas disponíveis (use exatamente estes nomes):");
         foreach (var t in tools) sb.AppendLine($"- {t.Name}: {t.Description}. args: {t.ArgsHelp}");
         return sb.ToString();
