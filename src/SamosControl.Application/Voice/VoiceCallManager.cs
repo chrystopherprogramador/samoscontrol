@@ -230,9 +230,27 @@ public class VoiceCallManager
                 if (c != null && _active.TryGetValue(c.Id, out var t)) { t.Session.RequestEnd(t.Session.State is VoiceCallState.Dialing or VoiceCallState.Ringing ? "rejected" : "remote_hangup"); return "terminated"; }
                 return "ignored";
             case "CallOffer":
+                if (c != null && c.Direction == VoiceDirection.Outbound)
+                {
+                    // Eco da oferta que nós mesmos discamos. Se o criador é o próprio número destino, o WhatsApp remetente está ligando para si mesmo e recusa.
+                    var creatorKey = rawBody == null ? null : CreatorPhoneKey(rawBody);
+                    if (creatorKey != null && creatorKey == c.PhoneKey && _active.TryGetValue(c.Id, out var self))
+                    {
+                        await UpdateAsync(c.Id, x => x.FailureDetail = "O número de destino é o do próprio WhatsApp que faz as ligações (a instância do Evolution Go Calls). Cadastre outro número.");
+                        self.Session.RequestEnd("self_call");
+                        return "self_call";
+                    }
+                    return "outbound_echo";
+                }
                 return await HandleInboundOfferAsync(db, externalCallId, from, ct);
             default: return "ignored";
         }
+    }
+
+    private static string? CreatorPhoneKey(string rawBody)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(rawBody, "\"(?:CallCreatorAlt|caller_pn)\"\\s*:\\s*\"(\\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return m.Success ? PhoneUtil.Key(m.Groups[1].Value) : null;
     }
 
     private async Task<string> HandleInboundOfferAsync(AppDbContext db, string? externalCallId, string? from, CancellationToken ct)

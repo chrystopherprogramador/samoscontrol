@@ -90,7 +90,7 @@ public class BillingService
         else await _asaas.UpdateCustomerAsync(c.AsaasCustomerId, req, ct);
     }
 
-    public async Task<Charge> CreateChargeAsync(int customerId, int? contractId, string? serviceName, decimal amount, DateTime dueDate, BillingType type, string? description, CancellationToken ct = default, string kind = "AVULSA", int sequence = 0)
+    public async Task<Charge> CreateChargeAsync(int customerId, int? contractId, string? serviceName, decimal amount, DateTime dueDate, BillingType type, string? description,     CancellationToken ct = default, string kind = "AVULSA", int sequence = 0, string? externalRef = null)
     {
         if (amount <= 0) throw new ArgumentException("O valor deve ser maior que zero.");
         if (dueDate.Date < AppTime.Now.Date) throw new ArgumentException("O vencimento não pode estar no passado.");
@@ -100,7 +100,7 @@ public class BillingService
         var charge = new Charge
         {
             CustomerId = customerId, ContractId = contractId, ServiceName = serviceName, Amount = amount, DueDate = DateTime.SpecifyKind(dueDate.Date, DateTimeKind.Utc),
-            BillingType = type, Description = desc, CreatedByUserId = _user.UserId, Kind = kind, Sequence = sequence, Provider = provider
+            BillingType = type, Description = desc, CreatedByUserId = _user.UserId,             Kind = kind, Sequence = sequence, Provider = provider, ExternalRef = externalRef
         };
         if (provider == ProviderEfi)
         {

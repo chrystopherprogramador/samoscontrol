@@ -34,7 +34,14 @@ public class AgentTests
         Assert.Equal(0, await db.Charges.CountAsync());
         Assert.Equal(1, await db.AiActions.CountAsync(a => a.Status == AiActionStatus.AguardandoConfirmacao));
 
-        await agent.HandleAsync("CONFIRMAR", ctx);
+        var bare = await agent.HandleAsync("CONFIRMAR", ctx);
+        Assert.Contains("CONFIRMAR ", bare);
+        Assert.Equal(1, await db.AiActions.CountAsync(a => a.Status == AiActionStatus.AguardandoConfirmacao));
+        var wrong = await agent.HandleAsync("CONFIRMAR 000000", ctx);
+        Assert.Equal(1, await db.AiActions.CountAsync(a => a.Status == AiActionStatus.AguardandoConfirmacao));
+
+        var code = System.Text.RegularExpressions.Regex.Match(reply, "CONFIRMAR ([0-9A-F]{6})").Groups[1].Value;
+        await agent.HandleAsync("CONFIRMAR " + code, ctx);
         Assert.Equal(0, await db.AiActions.CountAsync(a => a.Status == AiActionStatus.AguardandoConfirmacao));
     }
 

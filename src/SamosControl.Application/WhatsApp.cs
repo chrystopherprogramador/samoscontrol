@@ -228,7 +228,7 @@ public class WhatsAppService
 
         var aiText = audioIn ? m.Text![3..].Trim() : m.Text;
         if (sellerId is null && !m.FromMe && !string.IsNullOrWhiteSpace(aiText)) _ = Task.Run(() => DispatchToAgentAsync(m.Phone, aiText!, audioIn));
-        if (!m.FromMe && !string.IsNullOrWhiteSpace(aiText)) _ = Task.Run(() => DispatchToSdrAsync(sellerId, m.Phone, aiText!, audioIn));
+        // SDR automático desativado (Roberta 2.0): fluxo único, só o assistente da equipe responde.
     }
 
     /// <summary>Baixa o áudio recebido na Evolution e transcreve na ElevenLabs. Retorna null se indisponível.</summary>
@@ -270,16 +270,6 @@ public class WhatsAppService
             catch (Exception ex) { _log.LogWarning(ex, "Falha ao responder em áudio; enviando texto"); }
         }
         return sellerId.HasValue ? await SendSellerTextAsync(sellerId.Value, phone, text, userId, ct) : await SendTextAsync(phone, text, userId, fromAgent, ct);
-    }
-
-    private async Task DispatchToSdrAsync(int? sellerId, string phone, string text, bool viaAudio = false)
-    {
-        try
-        {
-            using var scope = _scopes.CreateScope();
-            await scope.ServiceProvider.GetRequiredService<SdrService>().HandleReplyAsync(sellerId, phone, text, viaAudio);
-        }
-        catch (Exception ex) { _log.LogError(ex, "Falha no SDR ao tratar resposta do lead"); }
     }
 
     /// <summary>Only registered, active users (matched by phone) with ai.use  can talk to the agent.</summary>

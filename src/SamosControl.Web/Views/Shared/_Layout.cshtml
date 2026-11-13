@@ -62,7 +62,6 @@
                 <div class="grp">IA</div>
                 <a asp-controller="Assistant" asp-action="Index"><i class="bi bi-robot"></i> Assistente</a>
                 @if (Perms.Has(Perm.AiHistory)) { <a asp-controller="Assistant" asp-action="History"><i class="bi bi-clock-history"></i> Histórico</a> }
-                @if (Perms.Has(Perm.SettingsManage)) { <a class="@Active("Training")" asp-controller="Training" asp-action="Index"><i class="bi bi-mortarboard"></i> Treinamento da IA</a><a class="@Active("Sdr")" asp-controller="Sdr" asp-action="Index"><i class="bi bi-megaphone"></i> SDR automático</a> }
             }
             @if (Perms.Has(Perm.AutomationView))
             {

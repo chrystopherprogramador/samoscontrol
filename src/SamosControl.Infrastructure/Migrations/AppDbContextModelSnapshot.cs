@@ -401,6 +401,10 @@ namespace SamosControl.Infrastructure.Migrations
                     b.Property<DateTime>("DueDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ExternalRef")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("InvoiceUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");

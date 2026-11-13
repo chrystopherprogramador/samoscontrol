@@ -107,6 +107,8 @@ public class AutomationService
                 L($"Cobranças marcadas como vencidas: {n}");
                 var paid = await _sp.GetRequiredService<BillingService>().RefreshOpenEfiAsync(ct);
                 L($"Cobranças Efí atualizadas: {paid}");
+                var lic = await _sp.GetRequiredService<AxisBridgeService>().GenerateLicenseChargesAsync(ct);
+                if (lic > 0) L($"Cobranças de licenças do Axis geradas: {lic}");
                 var axis = await _sp.GetRequiredService<AxisBridgeService>().SyncPaidAsync(ct);
                 if (axis > 0) L($"Mensalidades confirmadas no Axis: {axis}");
                 if (n > 0) await _sp.GetRequiredService<NotificationService>().CreateAsync(NotificationType.Warning, NotificationSource.Billing, $"{n} cobranças vencidas", null, "/Charges");
@@ -170,7 +172,6 @@ public class SchedulerWorker : BackgroundService
                 using var scope = _scopes.CreateScope();
                 await scope.ServiceProvider.GetRequiredService<AutomationService>().RunDueAsync(ct);
                 await scope.ServiceProvider.GetRequiredService<PersonalService>().RunRemindersAsync(ct);
-                await scope.ServiceProvider.GetRequiredService<SdrService>().RunAsync(ct);
             }
             catch (OperationCanceledException) { }
             catch (Exception ex) { _log.LogError(ex, "Erro no agendador"); }

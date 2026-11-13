@@ -294,6 +294,41 @@ public class CreateChargeTool : AgentToolBase
     }
 }
 
+public class CallMeTool : AgentToolBase
+{
+    private readonly Voice.VoiceCallManager _voice;
+    private readonly AppDbContext _db;
+    public CallMeTool(Voice.VoiceCallManager voice, AppDbContext db) { _voice = voice; _db = db; }
+    public override string Name => "ligar_para_mim";
+    public override string Description => "A Roberta liga por WhatsApp para o usuário e conversa por voz (só números autorizados)";
+    public override string ArgsHelp => "{\"numero\":\"opcional; padrão: o número de quem pediu\"}";
+    public override string Permission => Perm.VoiceCall;
+
+    public override async Task<ToolPlan> PlanAsync(AgentContext ctx, JsonObject a)
+    {
+        var why = _voice.Readiness();
+        if (why != null) return new($"Não consigo ligar agora: {why}", a, "");
+        var raw = Arg(a, "numero") ?? ctx.Phone;
+        var allowed = await _db.VoiceAllowedNumbers.Where(x => x.Active && x.ConsentAt != null).ToListAsync();
+        if (raw == null)
+        {
+            if (allowed.Count != 1) return new("Qual número devo ligar? Informe um número autorizado.", a, "");
+            raw = allowed[0].Phone;
+        }
+        var key = PhoneUtil.Key(raw);
+        var hit = key == null ? null : allowed.FirstOrDefault(x => x.PhoneKey == key);
+        if (hit == null) return new("Esse número não está na lista de autorizados para ligação (com consentimento).", a, "");
+        return new(null, new JsonObject { ["numero"] = hit.Phone }, $"Ligar agora para {hit.Label} ({hit.Phone}) pelo WhatsApp?");
+    }
+
+    public override async Task<string> ExecuteAsync(AgentContext ctx, JsonObject a, CancellationToken ct)
+    {
+        var phone = Arg(a, "numero")!;
+        var r = await _voice.StartTestCallAsync(phone, ctx.UserId, ctx.UserName, $"agent:{PhoneUtil.Key(phone)}:{DateTime.UtcNow:yyyyMMddHHmm}", ct);
+        return r.Ok ? (r.Duplicate ? "A ligação já está em andamento." : $"📞 Ligando agora (ligação #{r.CallId}). Atenda no WhatsApp.") : "Não consegui ligar: " + r.Error;
+    }
+}
+
 public class SendWhatsAppTool : AgentToolBase
 {
     private readonly AppDbContext _db;

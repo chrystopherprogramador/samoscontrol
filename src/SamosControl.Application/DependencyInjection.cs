@@ -59,7 +59,9 @@ public static class DependencyInjection
         s.AddSingleton<IEvolutionApiIntegration, EvolutionApiIntegration>();
         s.AddSingleton<IEvolutionInstances, EvolutionInstances>();
         s.AddSingleton<IElevenLabs, ElevenLabsIntegration>();
-        s.AddSingleton<IAiProvider, OllamaProvider>();
+        s.AddSingleton<OllamaProvider>();
+        s.AddSingleton<OpenClawProvider>();
+        s.AddSingleton<IAiProvider, RoutingAiProvider>();
         s.AddSingleton<Integrations.Voice.ICallGateway, Integrations.Voice.EvolutionGoCallsGateway>();
         s.AddSingleton<Integrations.Voice.IVoiceSpeech, Integrations.Voice.ElevenLabsVoiceSpeech>();
         s.AddSingleton<Voice.VoiceCallManager>();
@@ -93,6 +95,7 @@ public static class DependencyInjection
             typeof(QueryLeadsTool), typeof(QueryCustomersTool), typeof(QueryChargesTool), typeof(QueryContractsTool), typeof(QueryServersTool),
             typeof(QueryServicesTool), typeof(CompanySummaryTool), typeof(CreateJobTool), typeof(SyncLeadsTool), typeof(CreateLeadSearchTool),
             typeof(CreateChargeTool), typeof(SendWhatsAppTool),
+            typeof(QueryLicensesTool), typeof(RenewLicenseTool), typeof(SetLicenseStatusTool), typeof(ChargeLicenseTool), typeof(CallMeTool),
             typeof(AddTaskTool), typeof(ListTasksTool), typeof(CompleteTaskTool), typeof(RescheduleTaskTool), typeof(DeleteTaskTool),
             typeof(AddNoteTool), typeof(RememberFactTool), typeof(SearchNotesTool), typeof(DeleteNoteTool), typeof(AddExpenseTool), typeof(ExpenseSummaryTool)
         }) s.AddScoped(typeof(IAgentTool), t);

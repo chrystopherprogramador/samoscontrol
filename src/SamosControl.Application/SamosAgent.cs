@@ -51,6 +51,9 @@ public class SamosAgent
     private async Task<string> ProcessAsync(string message, AgentContext ctx, CancellationToken ct)
     {
         var word = message.Trim().TrimEnd('.', '!').ToUpperInvariant();
+        string? givenCode = null;
+        var parts = word.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 2 && parts[0] is "CONFIRMAR" or "CONFIRMO" or "SIM") { word = parts[0]; givenCode = parts[1].Trim(); }
         var now = DateTime.UtcNow;
         var pending = await _db.AiActions.Where(a => a.Status == AiActionStatus.AguardandoConfirmacao && a.UserId == ctx.UserId && a.Channel == ctx.Channel)
             .OrderByDescending(a => a.Id).FirstOrDefaultAsync(ct);
@@ -59,6 +62,7 @@ public class SamosAgent
         if (word is "CONFIRMAR" or "CONFIRMO" or "SIM")
         {
             if (pending == null) return "Não há nenhuma ação aguardando confirmação.";
+            if (givenCode != ConfirmCode(pending)) return $"Para confirmar esta ação responda: CONFIRMAR {ConfirmCode(pending)} (ou CANCELAR).";
             return await ExecutePendingAsync(pending, ctx, ct);
         }
         if (word is "CANCELAR" or "NAO" or "NÃO")
@@ -152,7 +156,7 @@ public class SamosAgent
         {
             action.Status = AiActionStatus.AguardandoConfirmacao; action.RequiresConfirmation = true; action.ExpiresAt = now.Add(ConfirmationTtl);
             await SaveActionAsync(action, ctx);
-            return (plan.Description + "\n\nResponda CONFIRMAR para executar ou CANCELAR.", true);
+            return (plan.Description + $"\n\nResponda CONFIRMAR {ConfirmCode(action)} para executar ou CANCELAR.", true);
         }
         var text = await RunAsync(tool, action, plan.Args, ctx, ct);
         return (text, action.Status == AiActionStatus.Falhou);
@@ -169,6 +173,13 @@ public class SamosAgent
             ? new AiChatMessage("assistant", new JsonObject { ["reply"] = m.Content.Truncate(700) }.ToJsonString())
             : new AiChatMessage("user", m.Content.Truncate(500))).ToList();
     }
+    // Código de confirmação vinculado ao id, usuário, ferramenta e parâmetros: alterar qualquer um invalida a autorização.
+    internal static string ConfirmCode(AiAction a)
+    {
+        var h = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{a.Id}|{a.UserId}|{a.Tool}|{a.ArgsJson}"));
+        return Convert.ToHexString(h, 0, 3);
+    }
+
     private async Task<string> ExecutePendingAsync(AiAction pending, AgentContext ctx, CancellationToken ct)
     {
         var tool = _tools.FirstOrDefault(t => t.Name == pending.Tool);

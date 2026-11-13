@@ -29,6 +29,8 @@ public class Charge : BaseEntity
     /// <summary>AVULSA (manual), IMPLANTACAO or MENSALIDADE. With ContractId + Sequence it makes contract billing idempotent.</summary>
     [MaxLength(20)] public string Kind { get; set; } = "AVULSA";
     public int Sequence { get; set; }
+    /// <summary>Vínculo com a licença do Axis: "axis:{subdomínio}:{yyyyMMdd da validade}". Garante uma única cobrança por vencimento de licença.</summary>
+    [MaxLength(100)] public string? ExternalRef { get; set; }
 }
 
 // ---------- WhatsApp ----------

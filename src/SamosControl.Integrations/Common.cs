@@ -54,6 +54,9 @@ public static class SettingKeys
     // Axis (Deployer): fonte única da configuração Efí. Quando preenchidos, os valores EFI_* vêm de lá.
     public const string AxisEfiUrl = "AXIS_EFI_CONFIG_URL";
     public const string AxisEfiToken = "AXIS_EFI_TOKEN";
+    public const string AxisLicenseBilling = "AXIS_COBRANCA_LICENCAS";
+    public const string AxisLicenseDaysBefore = "AXIS_COBRANCA_DIAS_ANTES";
+    public const string AxisLicenseMaxOverdue = "AXIS_COBRANCA_MAX_ATRASO_DIAS";
     // Evolution
     public const string EvolutionUrl = "EVOLUTION_API_URL";
     public const string EvolutionKey = "EVOLUTION_API_KEY";
@@ -64,6 +67,13 @@ public static class SettingKeys
     public const string OllamaModel = "OLLAMA_MODEL";
     public const string OllamaApiKey = "OLLAMA_API_KEY";
     public const string OllamaFallbackModel = "OLLAMA_FALLBACK_MODEL";
+    // Roberta 2.0: runtime OpenClaw (gateway privado) com GitHub Copilot; Ollama como contingência
+    public const string RobertaProvider = "ROBERTA_PROVIDER"; // ollama (padrão) | openclaw
+    public const string OpenClawUrl = "OPENCLAW_BASE_URL";
+    public const string OpenClawToken = "OPENCLAW_TOKEN";
+    public const string OpenClawModel = "ROBERTA_MODEL";
+    public const string OpenClawTimeout = "ROBERTA_TIMEOUT_SECONDS";
+    public const string RobertaFallbackOllama = "ROBERTA_FALLBACK_OLLAMA"; // true (padrão)
     // Voz (ElevenLabs): IA fala e entende áudios
     public const string ElevenLabsKey = "ELEVENLABS_API_KEY";
     public const string ElevenLabsVoiceId = "ELEVENLABS_VOICE_ID";
@@ -118,7 +128,7 @@ public static class SettingKeys
 
     public static readonly HashSet<string> Secrets = new()
     {
-        GoogleApiKey, GoogleBasicPassword, AsaasKey, AsaasWebhookToken, EfiClientSecret, EfiCertBase64, EfiCertPassword, AxisEfiToken, EvolutionKey, EvolutionWebhookToken, SmtpPassword, OllamaApiKey, ElevenLabsKey, VoiceGoApiKey, VoiceGoStreamKey, VoiceWebhookToken
+        GoogleApiKey, GoogleBasicPassword, AsaasKey, AsaasWebhookToken, EfiClientSecret, EfiCertBase64, EfiCertPassword, AxisEfiToken, EvolutionKey, EvolutionWebhookToken, SmtpPassword, OllamaApiKey, OpenClawToken, ElevenLabsKey, VoiceGoApiKey, VoiceGoStreamKey, VoiceWebhookToken
     };
 }
 

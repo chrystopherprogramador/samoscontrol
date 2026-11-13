@@ -26,5 +26,10 @@ RobertaEventWorker (BackgroundService) ─► política proativa ─► Orchestr
 9. **Webhook**: roteamento único. Usuário cadastrado com `Perm.AiUse` → Roberta 2.0; demais → só caixa central, sem resposta automática.
 10. **Prompt injection**: conteúdo externo entra como dado delimitado; ações N≥2 originadas de conteúdo externo exigem confirmação.
 
+## Achados da documentação oficial (validados)
+- **OpenClaw em Docker**: imagem oficial `ghcr.io/openclaw/openclaw` (Compose v2, `scripts/docker/setup.sh` com onboarding que gera o token do gateway). Porta padrão 18789. Requer revisar o hardening de rede (cadeia `DOCKER-USER`) em VPS.
+- **Letta em Docker (`letta/letta`)**: a documentação marca a imagem Docker como **depreciada/sem manutenção ativa** e recomenda o Letta App Server / modo local. Exige modelo de embedding explícito e proteção por senha em produção. **Decisão pendente**: antes de instalar, avaliar o Letta App Server; enquanto isso a memória usa o fallback em PostgreSQL por trás de `IMemoryProvider`.
+- Servidor 72.60.250.7: Docker Swarm + EasyPanel, 9 GB RAM livres, nenhuma instância de OpenClaw/Letta; deploy previsto como projeto Compose isolado, sem portas públicas.
+
 ## Configuração proposta (sem valores)
 `OPENCLAW_BASE_URL`, `OPENCLAW_TOKEN` (segredo), `OPENCLAW_AGENT_ID`, `ROBERTA_MODEL`, `ROBERTA_FALLBACK_PROVIDER`, `ROBERTA_TIMEOUT_SECONDS`, `LETTA_BASE_URL`, `LETTA_API_KEY` (segredo), `ROBERTA_PROACTIVE_ENABLED`, `ROBERTA_QUIET_HOURS`, `ROBERTA_V2_ENABLED` (flag temporária de desenvolvimento).

@@ -233,6 +233,9 @@ public static class SettingCatalog
         {
             new(SettingKeys.AxisEfiUrl, "URL da configuração no Axis", false, "Ex.: https://comercial.websamos.com.br/api/integracao/samos/efi-config. Quando preenchida junto com o token, as credenciais e o certificado abaixo são lidos do Axis (Deployer) e os campos locais ficam só como reserva."),
             new(SettingKeys.AxisEfiToken, "Token do Axis", true, "Gerado no Deployer em Configurar pagamentos > SamosControl."),
+            new(SettingKeys.AxisLicenseBilling, "Cobrar licenças do Axis automaticamente (true/false)", false, "Padrão: false. Gera a mensalidade de cada painel do Axis perto do vencimento da licença, mesmo sem contrato. Painéis de clientes com contrato de mensalidade ativo ficam por conta do contrato."),
+            new(SettingKeys.AxisLicenseDaysBefore, "Gerar quantos dias antes do vencimento", false, "Padrão: 10."),
+            new(SettingKeys.AxisLicenseMaxOverdue, "Não cobrar licenças vencidas há mais de (dias)", false, "Padrão: 60. Evita cobrar painéis abandonados."),
             new(SettingKeys.EfiClientId, "Client_Id"), new(SettingKeys.EfiClientSecret, "Client_Secret", true),
             new(SettingKeys.EfiSandbox, "Homologação (sandbox)?", false, "true para homologação; vazio ou false para produção."),
             new(SettingKeys.EfiPixKey, "Chave Pix", false, "Chave Pix da conta Efí que recebe (obrigatória para cobranças Pix)."),
@@ -247,6 +250,12 @@ public static class SettingCatalog
         }),
         new("ia", "IA", "bi-robot", new SettingField[]
         {
+            new(SettingKeys.RobertaProvider, "Runtime da Roberta (ollama ou openclaw)", false, "openclaw = OpenClaw + GitHub Copilot (gateway privado). Padrão ollama. Se o OpenClaw falhar, cai para o Ollama."),
+            new(SettingKeys.OpenClawUrl, "URL do OpenClaw (rede interna)", false, "Ex.: http://192.168.48.1:18789 (nunca exponha publicamente)."),
+            new(SettingKeys.OpenClawToken, "Token do OpenClaw", true, "OPENCLAW_GATEWAY_TOKEN do gateway (/opt/roberta-ai/.env no servidor)."),
+            new(SettingKeys.OpenClawModel, "Modelo (ex.: github-copilot/claude-sonnet-5.5)", false, "Vazio = padrão do gateway. Catálogo real: 'openclaw models list --provider github-copilot' no servidor."),
+            new(SettingKeys.OpenClawTimeout, "Timeout do OpenClaw (segundos, padrão 90)"),
+            new(SettingKeys.RobertaFallbackOllama, "Cair para o Ollama se o OpenClaw falhar (true/false)", false, "Padrão true."),
             new(SettingKeys.OllamaApiKey, "Token do Ollama Cloud (API key)", true, "Crie em https://ollama.com/settings/keys. É só o que falta preencher."),
             new(SettingKeys.OllamaModel, "Modelo do assistente (padrão: beam)", false, "beam = gratuito no Ollama Cloud, com ferramentas e raciocínio. Interpreta os comandos do Assistente."),
             new(SettingKeys.OllamaFallbackModel, "Modelo de contingência (padrão: gpt-oss:20b)", false, "Usado automaticamente se o principal falhar ou atingir limite. Muito barato (US$ 0,07/1M tokens de entrada)."),
@@ -292,7 +301,7 @@ public static class SettingCatalog
             new(SettingKeys.SmtpHost, "SMTP host"), new(SettingKeys.SmtpPort, "SMTP porta"), new(SettingKeys.SmtpUser, "SMTP usuário"),
             new(SettingKeys.SmtpPassword, "SMTP senha", true), new(SettingKeys.SmtpFrom, "Remetente")
         }),
-        new("cobranca", "Cobrança automática", "bi-bell", new SettingField[]
+        new("avisos", "Cobrança automática", "bi-bell", new SettingField[]
         {
             new(SettingKeys.NoticeEnabled, "Ativar avisos automáticos (true/false)", false, "Padrão: false. Envia lembretes das cobranças em aberto ao cliente."),
             new(SettingKeys.NoticeChannels, "Canais", false, "whatsapp, email ou ambos separados por vírgula (padrão: whatsapp,email)."),
