@@ -147,4 +147,44 @@ public class ContractFlowTests
         asaas.Fail = false;
         Assert.Equal(5, await sc.ServiceProvider.GetRequiredService<ContractBillingService>().GenerateDueAsync());
     }
+
+    [Fact]
+    public async Task ChangeSeller_WorksEvenAfterSigned_AndLogsEvent()
+    {
+        var (h, asaas, _) = NewHost(); using var _h = h; using var sc = h.Scope();
+        var svc = sc.ServiceProvider.GetRequiredService<ContractService>();
+        var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
+        var s1 = new Seller { Name = "Vendedor A", IsActive = true, MonthlyPercent = 10 };
+        var s2 = new Seller { Name = "Vendedor B", IsActive = true, MonthlyPercent = 20, PixKey = "chave-b" };
+        db.Sellers.AddRange(s1, s2);
+        await db.SaveChangesAsync();
+
+        var tpl = new ContractTemplate { Name = "T", Body = "# Contrato\n{{CLIENTE_NOME}} contrata {{SERVICO}}.\n{{CONDICOES_FINANCEIRAS}}\nCódigo {{CODIGO_VERIFICACAO}}" };
+        var cust = new Customer { Name = "ACME Ltda", Document = "12.345.678/0001-90", WhatsApp = "62999990000" };
+        db.ContractTemplates.Add(tpl); db.Customers.Add(cust);
+        await db.SaveChangesAsync();
+        var c = await svc.CreateAsync(tpl.Id, cust.Id, null, "Sistema X", 0, null, Terms(), s1.Id);
+        Assert.Equal(s1.Id, c.SellerId);
+
+        await svc.SendForSignatureAsync(c.Id);
+        var token = (await db.ContractParties.FirstAsync(p => p.ContractId == c.Id)).Token;
+        await svc.RequestOtpAsync(token, null, null);
+        var evo = (FakeEvolution)sc.ServiceProvider.GetRequiredService<IEvolutionApiIntegration>();
+        var code = System.Text.RegularExpressions.Regex.Match(evo.Sent.Last().Text, @"\*(\d{6})\*").Groups[1].Value;
+        Assert.True((await svc.SignAsync(token, new SignRequest("Fulano de Tal", Cpf, null, null, true, code), "1.1.1.1", "ua")).Success);
+        Assert.Equal(ContractStatus.Assinado, (await db.Contracts.FindAsync(c.Id))!.Status);
+
+        // Admin can still swap the seller even after the contract was already signed.
+        await svc.ChangeSellerAsync(c.Id, s2.Id, "admin@test");
+        var after = await db.Contracts.FindAsync(c.Id);
+        Assert.Equal(s2.Id, after!.SellerId);
+        Assert.Equal(20, after.MonthlyCommissionPercent); // picks up the new seller's current rate (not shown in the signed SERVICO PDF, so it's safe)
+        Assert.Contains(await db.ContractEvents.Where(e => e.ContractId == c.Id).Select(e => e.Type).ToListAsync(), t => t == "VENDEDOR_ALTERADO");
+
+        // Unassigning (null) also works.
+        await svc.ChangeSellerAsync(c.Id, null);
+        Assert.Null((await db.Contracts.FindAsync(c.Id))!.SellerId);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => svc.ChangeSellerAsync(c.Id, 99999));
+    }
 }

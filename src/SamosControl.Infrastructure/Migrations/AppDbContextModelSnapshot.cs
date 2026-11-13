@@ -382,6 +382,14 @@ namespace SamosControl.Infrastructure.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
+                    b.Property<string>("BoletoBarCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("BoletoPdfUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<int?>("ContractId")
                         .HasColumnType("integer");
 
@@ -400,6 +408,9 @@ namespace SamosControl.Infrastructure.Migrations
 
                     b.Property<DateTime>("DueDate")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("EfiBillet")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("ExternalRef")
                         .HasMaxLength(100)

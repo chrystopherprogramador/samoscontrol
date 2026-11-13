@@ -18,15 +18,15 @@ public class ChargeNoticeTests
     }
 
     [Fact]
-    public void Render_UsesTemplateAndDropsMissingPix()
+    public void Render_DropsPixPlaceholder_EvenWhenPixPayloadIsSet()
     {
+        // O código Pix copia-e-cola nunca é enviado em texto puro (gera cobrança bancária repetida no banco);
+        // mesmo um template antigo com {pix} deve simplesmente omitir essa linha.
         using var host = new TestHost(new() { ["COBRANCA_MSG_ATRASO"] = "Oi {nome}, {dias} dia(s) de atraso.\nPIX copia e cola:\n{pix}" });
         using var scope = host.Scope();
         var svc = scope.ServiceProvider.GetRequiredService<ChargeNoticeService>();
-        var ch = new Charge { Amount = 10, DueDate = DateTime.UtcNow.Date, Customer = new Customer { Name = "Ana" } };
+        var ch = new Charge { Amount = 10, DueDate = DateTime.UtcNow.Date, Customer = new Customer { Name = "Ana" }, PixPayload = "000201" };
         Assert.Equal("Oi Ana, 5 dia(s) de atraso.", svc.Render(ch, 5));
-        ch.PixPayload = "000201";
-        Assert.EndsWith("PIX copia e cola:\n000201", svc.Render(ch, 5));
     }
 
     [Fact]

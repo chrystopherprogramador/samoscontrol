@@ -14,8 +14,12 @@ public class FakeVoice : IElevenLabs
     public bool IsConfigured { get; set; } = true;
     public bool VoiceRepliesEnabled { get; set; } = true;
     public bool FailSynth { get; set; }
-    public Task<byte[]> SynthesizeAsync(string text, CancellationToken ct = default) =>
-        FailSynth ? throw new IntegrationException("falhou") : Task.FromResult(new byte[] { 1, 2, 3 });
+    public readonly List<string> Synthesized = new();
+    public Task<byte[]> SynthesizeAsync(string text, CancellationToken ct = default)
+    {
+        Synthesized.Add(text);
+        return FailSynth ? throw new IntegrationException("falhou") : Task.FromResult(new byte[] { 1, 2, 3 });
+    }
     public Task<string?> TranscribeAsync(byte[] audio, string fileName, string? mimeType, CancellationToken ct = default) => Task.FromResult<string?>("quero saber o preço");
 }
 
@@ -82,6 +86,31 @@ public class VoiceTests
         voice.FailSynth = true;
         var t = await wa.SendReplyAsync(null, "5511988887777", "Olá de novo", true);
         Assert.Equal("text", t.Type);
+        Assert.Single(inst.Audios);
+    }
+
+    [Fact]
+    public async Task Reply_TtsReceivesSpokenText_HistoryKeepsOriginal_AndConfirmCodeGoesAsText()
+    {
+        var inst = new FakeEvolutionInstances();
+        var voice = new FakeVoice();
+        using var h = new TestHost(configure: s => { s.AddSingleton<IEvolutionInstances>(inst); s.AddSingleton<IElevenLabs>(voice); s.AddSingleton<IEvolutionApiIntegration>(new FakeEvolution()); });
+        using var sc = h.Scope();
+        var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
+        await sc.ServiceProvider.GetRequiredService<SettingsService>().SetAsync(db, SettingKeys.EvolutionInstance, "samos_disparo");
+        var wa = sc.ServiceProvider.GetRequiredService<WhatsAppService>();
+
+        var original = "**Cobranças** 📋\n- 12 pendentes (#45), total R$ 4.785,50 https://x.com/a";
+        var a = await wa.SendReplyAsync(null, "5511988887777", original, true);
+        Assert.Equal("audio", a.Type);
+        Assert.Equal(original, a.Body);
+        var spoken = Assert.Single(voice.Synthesized);
+        Assert.Contains("doze pendentes", spoken);
+        Assert.Contains("quatro mil setecentos e oitenta e cinco reais e cinquenta centavos", spoken);
+        Assert.DoesNotContain("http", spoken); Assert.DoesNotContain("#", spoken); Assert.DoesNotContain("*", spoken);
+
+        var c = await wa.SendReplyAsync(null, "5511988887777", "Responda CONFIRMAR 1A2B3C para executar.", true);
+        Assert.Equal("text", c.Type);
         Assert.Single(inst.Audios);
     }
 }

@@ -487,9 +487,59 @@ public class VoiceSession
         if (_opened) return; _opened = true;
         RunSystemTurn(async (id, ct) =>
         {
-            var text = await _brain.OpenerAsync(ct);
-            await SpeakAsync(text, id, ct);
+            // Texto (e, quando possível, áudio) já começaram a ser preparados desde a discagem/toque: na maioria das vezes
+            // já estão prontos aqui, e só falta a pausa natural de ~1s antes de falar, como uma pessoa faria.
+            var openerTask = _brain.OpenerAsync(ct);
+            var first = await Task.WhenAny(openerTask, Task.Delay(TimeSpan.FromMilliseconds(_opt.FillerAfterMs), _clock, ct));
+            if (first != openerTask)
+            {
+                // raro: ainda não ficou pronto a tempo (ex.: IA lenta). Usa o mesmo recurso de "frase de espera" das respostas normais.
+                _host.Event("opener_filler");
+                if (!await SpeakAsync(_opt.NextFiller(), id, ct, record: false)) return;
+                var rest = Math.Max(1, _opt.BrainTimeoutMs - _opt.FillerAfterMs);
+                var second = await Task.WhenAny(openerTask, Task.Delay(TimeSpan.FromMilliseconds(rest), _clock, ct));
+                if (second != openerTask)
+                {
+                    _host.Event("opener_timeout");
+                    await SpeakAsync(_opt.BrainSlowText, id, ct);
+                    return;
+                }
+            }
+            else
+            {
+                try { await Task.Delay(TimeSpan.FromMilliseconds(900), _clock, ct); } catch (OperationCanceledException) { return; } // pausa natural antes de começar a falar
+            }
+            string text;
+            try { text = await openerTask; }
+            catch (OperationCanceledException) { return; }
+            IReadOnlyList<byte[]>? audio = null;
+            try { audio = await _brain.OpenerAudioAsync(ct); } catch (OperationCanceledException) { }
+            if (audio is { Count: > 0 }) await SpeakPrerenderedAsync(text, audio, id, ct);
+            else await SpeakAsync(text, id, ct);
         });
+    }
+
+    /// <summary>Toca um áudio já sintetizado (abertura pré-gerada): sem chamada de TTS ao vivo, nem a latência de rede dela.</summary>
+    private async Task<bool> SpeakPrerenderedAsync(string text, IReadOnlyList<byte[]> audio, int id, CancellationToken ct)
+    {
+        if (!SetState(VoiceCallState.Speaking, turn: id)) return false;
+        bool completed;
+        try { completed = await _player.PlayAsync(ChunksAsync(audio, ct), ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _host.Event("tts_failed", ex.Message);
+            End("tts_failed");
+            return false;
+        }
+        lock (_lock) { _transcript.Add(new("Roberta", completed ? text : text + " (interrompida)", Sec())); _ttsChars += text.Length; }
+        if (completed) { _lastActivity = _clock.GetUtcNow(); SetState(VoiceCallState.Listening, turn: id); }
+        return completed;
+    }
+
+    private static async IAsyncEnumerable<byte[]> ChunksAsync(IReadOnlyList<byte[]> chunks, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        foreach (var c in chunks) { ct.ThrowIfCancellationRequested(); yield return c; }
+        await Task.CompletedTask;
     }
 
     private async Task KeepAliveLoopAsync()

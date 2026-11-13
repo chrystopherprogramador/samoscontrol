@@ -11,6 +11,24 @@
     <div class="card-body"><pre class="doc">@Model.RenderedText</pre></div>
     <div class="card-footer small text-muted">Hash do documento: <code>@Model.DocumentHash</code>@if (Model.FinalPdfHash != null) { <text><br />Hash do PDF final: <code>@Model.FinalPdfHash</code></text> }</div></div></div>
 <div class="col-lg-5">
+    @if (Model.Kind == "SERVICO")
+    {
+        <div class="card mb-3"><div class="card-header">Vendedor (carteira)</div>
+        <div class="card-body small">
+            <div class="mb-2">Atual: <strong>@(ViewBag.CurrentSellerName ?? "nenhum")</strong></div>
+            @if (Perms.Has(Perm.ContractsChangeSeller))
+            {
+                <form method="post" asp-action="ChangeSeller" asp-route-id="@Model.Id" class="d-flex gap-1" data-confirm="Trocar o vendedor deste contrato? Isso só afeta comissões de cobranças pagas a partir de agora.">
+                    <select name="sellerId" class="form-select form-select-sm">
+                        <option value="">(sem vendedor)</option>
+                        @foreach (var s in (List<Seller>)ViewBag.Sellers) { <option value="@s.Id" selected="@(s.Id == Model.SellerId)">@s.Name</option> }
+                    </select>
+                    <button class="btn btn-sm btn-outline-primary">Salvar</button>
+                </form>
+            }
+            else { <div class="text-muted">Somente administradores podem alterar o vendedor.</div> }
+        </div></div>
+    }
     <div class="card mb-3"><div class="card-header">Partes e assinaturas</div><ul class="list-group list-group-flush">
     @foreach (var p in Model.Parties)
     {
@@ -52,7 +70,7 @@
         }
     </div></div>
     <div class="card"><div class="card-header">Trilha de eventos</div><ul class="list-group list-group-flush small">
-    @foreach (var e in Model.Events) { <li class="list-group-item d-flex justify-content-between"><span><strong>@e.Type</strong> @e.Ip</span><span class="text-muted">@e.At.Local()</span></li> }
+    @foreach (var e in Model.Events) { <li class="list-group-item d-flex justify-content-between"><span><strong>@e.Type</strong> @e.Ip @if (!string.IsNullOrWhiteSpace(e.Details)) { <span class="@(e.Type == "COBRANCA_FALHOU" ? "text-danger" : "text-muted") d-block">@e.Details</span> }</span><span class="text-muted ms-2 text-nowrap">@e.At.Local()</span></li> }
     </ul></div>
 </div></div>
 

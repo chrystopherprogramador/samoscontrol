@@ -16,9 +16,9 @@ public class ChargeNoticeService
     public const string WhatsApp = "WHATSAPP", Email = "EMAIL";
     public const int MaxAttempts = 3, MaxPerRun = 300;
 
-    public const string DefaultBefore = "Olá, {nome}! Passando para lembrar que sua cobrança de {valor} ({descricao}) vence em {vencimento}.\nPagamento: {link}\nPIX copia e cola:\n{pix}";
-    public const string DefaultDue = "Olá, {nome}! Sua cobrança de {valor} ({descricao}) vence hoje ({vencimento}).\nPagamento: {link}\nPIX copia e cola:\n{pix}";
-    public const string DefaultAfter = "Olá, {nome}! Identificamos que a cobrança de {valor} ({descricao}), vencida em {vencimento}, está em aberto há {dias} dia(s). Se já pagou, desconsidere.\nPagamento: {link}\nPIX copia e cola:\n{pix}";
+    public const string DefaultBefore = "Olá, {nome}! Passando para lembrar que sua cobrança de {valor} ({descricao}) vence em {vencimento}.\nPagamento (Pix ou boleto): {link}";
+    public const string DefaultDue = "Olá, {nome}! Sua cobrança de {valor} ({descricao}) vence hoje ({vencimento}).\nPagamento (Pix ou boleto): {link}";
+    public const string DefaultAfter = "Olá, {nome}! Identificamos que a cobrança de {valor} ({descricao}), vencida em {vencimento}, está em aberto há {dias} dia(s). Se já pagou, desconsidere.\nPagamento (Pix ou boleto): {link}";
     public const string DefaultSubject = "Cobrança de {valor} - vencimento {vencimento}";
 
     private readonly AppDbContext _db;
@@ -65,8 +65,11 @@ public class ChargeNoticeService
     {
         var vars = new Dictionary<string, string?>
         {
+            // O PIX copia-e-cola nunca é enviado em texto puro (gera cobrança bancária repetida); forçamos a variável a
+            // ficar vazia para que qualquer linha com {pix} (padrão ou template antigo customizado) seja descartada.
+            // O cliente paga Pix OU boleto abrindo o link, que já traz os dois (QR code e código de barras) juntos.
             ["nome"] = ch.Customer?.Name, ["valor"] = ContractService.Money(ch.Amount), ["vencimento"] = ch.DueDate.ToString("dd/MM/yyyy"),
-            ["descricao"] = ch.ServiceName ?? "serviço", ["link"] = ch.InvoiceUrl, ["pix"] = ch.PixPayload,
+            ["descricao"] = ch.ServiceName ?? "serviço", ["link"] = ch.InvoiceUrl, ["pix"] = null,
             ["dias"] = Math.Abs(daysLate).ToString()
         };
         // A line whose placeholder has no value (e.g. a charge without PIX) is dropped instead of leaving a dangling label.
@@ -145,7 +148,16 @@ public class ChargeNoticeService
     private async Task DeliverAsync(Charge ch, int late, string channel, string to, CancellationToken ct)
     {
         var text = Render(ch, late);
-        if (channel == WhatsApp) await _wa.SendTextAsync(to, text, null, fromAgent: true, ct);
+        if (channel == WhatsApp)
+        {
+            // Em dia ou antes do vencimento: manda também o PDF do boleto em anexo. Em atraso: só o link (incentiva o Pix, que compensa na hora).
+            if (late <= 0 && !string.IsNullOrWhiteSpace(ch.BoletoPdfUrl))
+            {
+                var pdf = await _wa.TryDownloadPdfAsync(ch.BoletoPdfUrl, ct);
+                if (pdf != null) { await _wa.SendDocumentAsync(to, pdf, $"boleto-{ch.Id}.pdf", text, null, ct); return; }
+            }
+            await _wa.SendTextAsync(to, text, null, fromAgent: true, ct);
+        }
         else await _email.SendAsync(to, Subject(ch, late), text, ct);
     }
 

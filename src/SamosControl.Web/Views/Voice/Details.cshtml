@@ -8,7 +8,6 @@
     <a asp-action="Index" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i></a>
     <h5 class="mb-0">@(Model.ContactName ?? Model.Phone)</h5>
     <span class="badge bg-primary" id="callState" data-id="@Model.Id" data-live="@live.ToString().ToLower()">@Model.State</span>
-    @if (Model.LeadId.HasValue) { <a class="btn btn-sm btn-outline-secondary ms-2" asp-controller="Leads" asp-action="Details" asp-route-id="@Model.LeadId">Lead no CRM</a> }
     @if (Perms.Has(Perm.VoiceCall) && live)
     {
         <form method="post" asp-action="Hangup" class="ms-auto"><input type="hidden" name="id" value="@Model.Id" /><button class="btn btn-danger btn-sm"><i class="bi bi-telephone-x"></i> Encerrar</button></form>
@@ -22,7 +21,7 @@
             <div><b>Iniciada por:</b> @(Model.StartedByName ?? "-")</div>
             <div><b>Duração:</b> @(Model.DurationSeconds > 0 ? Model.DurationSeconds + " s" : "-")</div>
             <div><b>Motivo do fim:</b> @(Model.EndReason ?? "-")</div>
-            <div><b>Resultado comercial:</b> @(Model.Outcome ?? "-")</div>
+            <div><b>Resultado:</b> @(Model.Outcome ?? "-")</div>
             <div><b>Turnos:</b> @Model.Turns · <b>Interrupções:</b> @Model.BargeIns</div>
             <div><b>Latência medida (fim da fala → início da resposta):</b> média @(Model.AvgResponseLatencyMs > 0 ? Model.AvgResponseLatencyMs + " ms" : "n/d"), máx. @(Model.MaxResponseLatencyMs > 0 ? Model.MaxResponseLatencyMs + " ms" : "n/d")</div>
             <div><b>Uso:</b> @Model.TtsCharacters caracteres TTS, @Model.SttSeconds s STT, @Model.LlmCalls chamadas LLM</div>
@@ -35,7 +34,7 @@
             </div></div></div>
     </div>
     <div class="col-lg-8">
-        <div class="card mb-3"><div class="card-body"><h6>Resumo comercial</h6>
+        <div class="card mb-3"><div class="card-body"><h6>Resumo da ligação</h6>
             <div style="white-space:pre-wrap">@(string.IsNullOrWhiteSpace(Model.Summary) ? "Disponível ao final da ligação." : Model.Summary)</div></div></div>
         <div class="card"><div class="card-body"><h6>Transcrição</h6>
             @if (string.IsNullOrWhiteSpace(Model.Transcript)) { <div class="text-muted small">Transcrição não armazenada (VOICE_CALLS_STORE_TRANSCRIPT desativado ou ligação em andamento).</div> }

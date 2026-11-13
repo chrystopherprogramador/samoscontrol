@@ -81,7 +81,7 @@ public class ContractBillingService
         var existing = (await _db.Charges.Where(x => x.ContractId == contractId && x.Kind != "AVULSA").Select(x => new { x.Kind, x.Sequence }).ToListAsync(ct))
             .Select(x => (x.Kind, x.Sequence)).ToHashSet();
 
-        int created = 0, failed = 0;
+        int created = 0, failed = 0; string? lastError = null;
         foreach (var item in wanted.Where(w => !existing.Contains((w.Kind, w.Sequence))))
         {
             try
@@ -90,12 +90,19 @@ public class ContractBillingService
                 await _billing.CreateChargeAsync(c.CustomerId.Value, c.Id, c.ServiceName, item.Amount, due, c.BillingType, item.Description, ct, item.Kind, item.Sequence);
                 created++;
             }
-            catch (Exception ex) when (ex is IntegrationException or ArgumentException or DbUpdateException)
+            catch (Exception ex) when (ex is IntegrationException or ArgumentException or DbUpdateException or InvalidOperationException or HttpRequestException)
             {
                 failed++;
                 _db.ChangeTracker.Clear();
-                _db.ContractEvents.Add(new ContractEvent { ContractId = c.Id, Type = "COBRANCA_FALHOU", Details = $"{item.Kind} {item.Sequence}: {ex.Message.Truncate(300)}" });
-                await _db.SaveChangesAsync(ct);
+                var detail = $"{item.Kind} {item.Sequence}: {ex.Message.Truncate(300)}";
+                // The retry runs every cycle; keep one event per distinct error per 6h so the trail stays readable.
+                var since = DateTime.UtcNow.AddHours(-6);
+                if (!await _db.ContractEvents.AnyAsync(e => e.ContractId == c.Id && e.Type == "COBRANCA_FALHOU" && e.Details == detail && e.At > since, ct))
+                {
+                    _db.ContractEvents.Add(new ContractEvent { ContractId = c.Id, Type = "COBRANCA_FALHOU", Details = detail });
+                    await _db.SaveChangesAsync(ct);
+                }
+                lastError = detail;
             }
         }
 
@@ -116,7 +123,7 @@ public class ContractBillingService
             if (created > 0) await _audit.LogAsync("contracts", "generate_charges", "Contract", c.Id, newData: $"created={created}");
         }
         if (failed > 0)
-            await _notify.CreateAsync(NotificationType.Error, NotificationSource.Billing, "Falha ao gerar cobranças do contrato", $"{c.Title}: {failed} cobrança(s) não criada(s). Será tentado novamente.", $"/Contracts/Details/{c.Id}");
+            await _notify.CreateAsync(NotificationType.Error, NotificationSource.Billing, "Falha ao gerar cobranças do contrato", $"{c.Title}: {failed} cobrança(s) não criada(s). Motivo: {lastError}. Será tentado novamente.", $"/Contracts/Details/{c.Id}");
         return new(created, failed, closed);
     }
 

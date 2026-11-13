@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
@@ -21,15 +21,25 @@ public class VoiceController : AppController
     private readonly VoiceCallManager _voice;
     private readonly SettingsService _settings;
     private readonly AuditService _audit;
-    public VoiceController(AppDbContext db, VoiceCallManager voice, SettingsService settings, AuditService audit) { _db = db; _voice = voice; _settings = settings; _audit = audit; }
+    private readonly IAiProvider _ai;
+    public VoiceController(AppDbContext db, VoiceCallManager voice, SettingsService settings, AuditService audit, IAiProvider ai) { _db = db; _voice = voice; _settings = settings; _audit = audit; _ai = ai; }
 
     public async Task<IActionResult> Index()
     {
         ViewBag.Calls = await _db.VoiceCalls.AsNoTracking().OrderByDescending(c => c.CreatedAt).Take(50).ToListAsync();
+        ViewBag.Scheduled = await _db.AutomationJobs.AsNoTracking().Where(j => j.Type == JobType.PlaceCall).OrderByDescending(j => j.Id).Take(20).ToListAsync();
         ViewBag.Allowed = await _db.VoiceAllowedNumbers.AsNoTracking().OrderBy(a => a.Label).ToListAsync();
         ViewBag.Readiness = _voice.Readiness();
         ViewBag.Limits = _voice.Limits;
         ViewBag.Key = Guid.NewGuid().ToString("N");
+        ViewBag.AiEngine = _ai.Name;
+        ViewBag.AiConfigured = _ai.IsConfigured;
+        ViewBag.AiModel = _settings.Get(SettingKeys.OpenClawModel) ?? _settings.Get(SettingKeys.OllamaModel);
+        ViewBag.VoiceId = _settings.Get(SettingKeys.ElevenLabsVoiceId);
+        ViewBag.TtsModel = string.IsNullOrWhiteSpace(_settings.Get(SettingKeys.VoiceTtsModel)) ? ElevenLabsIntegration.DefaultTtsModel : _settings.Get(SettingKeys.VoiceTtsModel);
+        ViewBag.SttModel = _settings.Get(SettingKeys.ElevenLabsSttModel);
+        var recent = await _db.VoiceCalls.AsNoTracking().Where(c => c.AvgResponseLatencyMs > 0).OrderByDescending(c => c.CreatedAt).Take(20).Select(c => c.AvgResponseLatencyMs).ToListAsync();
+        ViewBag.LatencyText = recent.Count > 0 ? $"~{(int)recent.Average()} ms (média das últimas {recent.Count} ligações)" : "sem dados ainda";
         return View();
     }
 

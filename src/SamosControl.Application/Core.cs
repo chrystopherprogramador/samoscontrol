@@ -60,7 +60,7 @@ public static class AppTime
     public static DateTime WeekStartUtc => ToUtc(Now.Date.AddDays(-(((int)Now.DayOfWeek + 6) % 7)));
 }
 
-public class SettingsService : ISettingsReader
+public class SettingsService : ISettingsReader, IAxisEfiDiagnostics
 {
     private readonly IServiceScopeFactory _scopes;
     private readonly IConfiguration _cfg;
@@ -95,10 +95,21 @@ public class SettingsService : ISettingsReader
     /// <summary>Axis (when configured) wins for the Efí keys; otherwise database value wins and the environment variable (same key) is the fallback.</summary>
     public string? Get(string key)
     {
-        if (RemoteEfiKeys.TryGetValue(key, out var field) && AxisEfi() is { } axis)
-            return axis.TryGetValue(field, out var v) && !string.IsNullOrWhiteSpace(v) ? v : null;
+        if (RemoteEfiKeys.ContainsKey(key))
+        {
+            // Efí is managed by the Axis Deployer: stored panel values are ignored; only Axis (or, without Axis, the environment) is used.
+            if (!AxisEfiConfigured()) { var env = _cfg[key]; return string.IsNullOrWhiteSpace(env) ? null : env; }
+            var axis = AxisEfi();
+            return axis is not null && axis.TryGetValue(RemoteEfiKeys[key], out var v) && !string.IsNullOrWhiteSpace(v) ? v : null;
+        }
         return GetLocal(key);
     }
+
+    private bool AxisEfiConfigured() =>
+        !string.IsNullOrWhiteSpace(GetLocal(SettingKeys.AxisEfiUrl)) && !string.IsNullOrWhiteSpace(GetLocal(SettingKeys.AxisEfiToken));
+
+    private string? _axisError;
+    public string? AxisEfiError => AxisEfiConfigured() ? _axisError : "A cobrança Efí é gerenciada pelo Axis/Deployer: preencha a URL e o token do Axis em Configurações > Efí Bank.";
 
     private string? GetLocal(string key)
     {
@@ -138,7 +149,16 @@ public class SettingsService : ISettingsReader
                 using var req = new HttpRequestMessage(HttpMethod.Get, url.Trim());
                 req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Trim());
                 using var res = AxisHttp.Send(req);
-                if (!res.IsSuccessStatusCode) return _axis;
+                if (!res.IsSuccessStatusCode)
+                {
+                    _axisError = res.StatusCode switch
+                    {
+                        System.Net.HttpStatusCode.Unauthorized => "O Axis recusou o token (401): confira o 'Token do Axis' nas configurações do Efí.",
+                        System.Net.HttpStatusCode.NotFound => "O Axis respondeu 404: a Efí não está configurada completa no Deployer (Client_Id, Client_Secret, chave Pix e certificado) ou a URL está errada.",
+                        _ => $"O Axis respondeu {(int)res.StatusCode} ao buscar a configuração do Efí."
+                    };
+                    return _axis;
+                }
                 using var doc = System.Text.Json.JsonDocument.Parse(res.Content.ReadAsStream());
                 var map = new Dictionary<string, string>();
                 foreach (var p in doc.RootElement.EnumerateObject())
@@ -150,14 +170,18 @@ public class SettingsService : ISettingsReader
                         _ => ""
                     };
                 _axis = map;
+                _axisError = null;
             }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException) { }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
+            {
+                _axisError = "Não foi possível acessar o Axis para ler a configuração do Efí: " + ex.Message;
+            }
             return _axis;
         }
     }
 
     public string Source(string key) =>
-        RemoteEfiKeys.ContainsKey(key) && AxisEfi() is not null ? "axis"
+        RemoteEfiKeys.ContainsKey(key) && AxisEfiConfigured() ? "axis"
         : Snapshot().TryGetValue(key, out var s) && !string.IsNullOrEmpty(s.Value) ? "painel"
         : !string.IsNullOrWhiteSpace(_cfg[key]) ? "ambiente" : "-";
 

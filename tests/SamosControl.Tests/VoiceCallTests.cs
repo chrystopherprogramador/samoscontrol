@@ -245,7 +245,7 @@ public class VoiceUnitTests
     [Fact]
     public void VoiceText_RemovesWhatIsNotSpoken()
     {
-        Assert.Equal("Olá tudo bem? Veja", VoiceText.ForSpeech("**Olá** 😀 tudo bem?\n- Veja https://x.com/a"));
+        Assert.Equal("Olá tudo bem? Veja.", VoiceText.ForSpeech("**Olá** 😀 tudo bem?\n- Veja https://x.com/a"));
         var s = VoiceText.Sentences("Oi, aqui é a Roberta da Samos. Como posso ajudar você hoje? Fico no aguardo.");
         Assert.True(s.Count >= 2);
         Assert.Equal("Oi, aqui é a Roberta da Samos. Como posso ajudar você hoje? Fico no aguardo.", string.Join(" ", s));
@@ -610,10 +610,16 @@ public class VoiceManagerTests
         return (host, gw, host.Root.GetRequiredService<VoiceCallManager>());
     }
 
-    private static async Task Allow(TestHost h, string phone, bool consent = true)
+    private static async Task Allow(TestHost h, string phone, bool consent = true, bool withUser = true)
     {
         using var sc = h.Scope(); var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
         db.VoiceAllowedNumbers.Add(new VoiceAllowedNumber { Phone = PhoneUtil.Normalize(phone)!, PhoneKey = PhoneUtil.Key(phone)!, Label = "Teste", Active = true, ConsentAt = consent ? DateTime.UtcNow : null, ConsentBy = "admin" });
+        if (withUser)
+        {
+            var role = new Role { Name = "R" + Guid.NewGuid().ToString("N")[..6] };
+            role.Permissions.Add(new RolePermission { Permission = Perm.AiUse });
+            db.Users.Add(new User { Name = "Dono Teste", Email = $"{Guid.NewGuid():N}@samos.test", PasswordHash = "x", Role = role, Phone = PhoneUtil.Normalize(phone) });
+        }
         await db.SaveChangesAsync();
     }
 
@@ -713,7 +719,7 @@ public class VoiceManagerTests
     }
 
     [Fact]
-    public async Task CompletedCall_PersistsResult_WithoutTranscriptByDefault_AndWritesCrmInteraction()
+    public async Task CompletedCall_PersistsResult_WithoutTranscriptByDefault_AndNoCrm()
     {
         var (h, gw, m) = Setup(); using var _ = h;
         await Allow(h, Phone);
@@ -722,29 +728,45 @@ public class VoiceManagerTests
         gw.Streams[0].Push(Pcm.Silence()); // atendeu
         Assert.True(await WaitAsync(() => { using var sc = h.Scope(); return sc.ServiceProvider.GetRequiredService<AppDbContext>().VoiceCalls.Any(x => x.State == VoiceCallState.Speaking || x.State == VoiceCallState.Listening); }));
         await m.HangupAsync(r.CallId!.Value);
-        Assert.True(await WaitAsync(() => { using var sc = h.Scope(); return sc.ServiceProvider.GetRequiredService<AppDbContext>().VoiceCalls.Any(x => x.State == VoiceCallState.Completed); }));
+        Assert.True(await WaitAsync(() => { using var sc = h.Scope(); return sc.ServiceProvider.GetRequiredService<AppDbContext>().VoiceCalls.Any(x => x.State == VoiceCallState.Completed && x.EndReason != null); }));
         using var s2 = h.Scope(); var db = s2.ServiceProvider.GetRequiredService<AppDbContext>();
         var c = await db.VoiceCalls.SingleAsync();
         Assert.Equal("user_hangup", c.EndReason);
         Assert.Null(c.Transcript);
         Assert.Null(c.EstimatedCost); // sem tarifas configuradas não se inventa custo
         Assert.NotNull(c.Summary);
-        Assert.True(await db.Interactions.AnyAsync(i => i.LeadId == c.LeadId && i.Type == InteractionType.Ligacao));
+        Assert.False(db.Leads.Any() || db.SdrContacts.Any() || db.Interactions.Any()); // ligação não usa mais o CRM/SDR
     }
 
-    // 17: a mesma memória (contato/lead) é usada pelo WhatsApp e pela ligação
+    // 17: a ligação é da Roberta única: só atende/liga para usuário ativo com ai.use; sem cadastro não existe ligação
     [Fact]
-    public async Task S17_WhatsAppAndCall_ShareTheSameLeadAndContact()
+    public async Task Call_RequiresRegisteredUserWithAiUse_AndCreatesNoLeadOrSdrContact()
     {
-        using var h = new TestHost();
-        using var sc = h.Scope(); var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
-        var (lead1, c1) = await VoiceContactResolver.EnsureAsync(db, "5511999990001", "Maria", default);
-        var (lead2, c2) = await VoiceContactResolver.EnsureAsync(db, "(11) 99999-0001", "Maria", default);
-        Assert.Equal(lead1.Id, lead2.Id); Assert.Equal(c1.Id, c2.Id);
-        Assert.Equal(1, await db.Leads.CountAsync());
-        Assert.Equal(1, await db.SdrContacts.CountAsync());
-        var camp = await db.SdrCampaigns.SingleAsync(x => x.Id == c1.CampaignId);
-        Assert.False(camp.IsActive); // nunca entra nos disparos automáticos
+        var (h, gw, m) = Setup(); using var _ = h;
+        await Allow(h, Phone, withUser: false);
+        var r = await m.StartTestCallAsync(Phone, 1, "admin", "k1");
+        Assert.False(r.Ok); Assert.Contains("ai.use", r.Error); Assert.Equal(0, gw.Dials);
+
+        using (var sc = h.Scope())
+        {
+            var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
+            var role = new Role { Name = "SemIa" };
+            db.Users.Add(new User { Name = "Sem IA", Email = "x@samos.test", PasswordHash = "x", Role = role, Phone = PhoneUtil.Normalize(Phone) });
+            await db.SaveChangesAsync();
+        }
+        Assert.False((await m.StartTestCallAsync(Phone, 1, "admin", "k2")).Ok); // usuário sem Perm.AiUse
+        Assert.Equal(0, gw.Dials);
+        using var s2 = h.Scope();
+        Assert.Equal(0, await s2.ServiceProvider.GetRequiredService<AppDbContext>().SdrContacts.CountAsync());
+    }
+
+    [Fact]
+    public async Task Inbound_FromAllowlistedNumberWithoutUser_IsNotAnswered()
+    {
+        var (h, gw, m) = Setup(new() { ["VOICE_CALLS_INBOUND_ENABLED"] = "true" }); using var _ = h;
+        await Allow(h, Phone, withUser: false);
+        Assert.Equal("not_allowed", await m.HandleWebhookAsync("CallOffer", "in-2", "5511999990001@s.whatsapp.net"));
+        Assert.Equal(0, m.ActiveCount);
     }
 
     [Fact]
@@ -762,3 +784,6 @@ public class VoiceManagerTests
         return cond();
     }
 }
+
+
+

@@ -34,7 +34,7 @@ public class EfiTests
             else if (url.Contains("/v2/cobv/") && r.Method == HttpMethod.Put) json = """{"status":"ATIVA","pixCopiaECola":"00020126PIX","loc":{"id":77}}""";
             else if (url.Contains("/v2/loc/")) json = """{"imagemQrcode":"data:image/png;base64,QUJD"}""";
             else if (url.Contains("/v2/cobv/") && r.Method == HttpMethod.Get) json = """{"status":"CONCLUIDA","pix":[{"valor":"150.00","horario":"2030-01-02T10:00:00Z"}]}""";
-            else if (url.EndsWith("/charge/one-step")) json = """{"code":200,"data":{"charge_id":4321,"status":"waiting","link":"https://boleto/4321"}}""";
+            else if (url.EndsWith("/charge/one-step")) json = """{"code":200,"data":{"charge_id":4321,"status":"waiting","link":"https://boleto/4321","barcode":"34191.79001 01043.510047 91020.150008 1 96610000019990","pix":{"qrcode":"00020126PIXBOLETO","qrcode_image":"data:image/png;base64,QkFS"}}}""";
             else json = "{}";
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
         }
@@ -74,17 +74,34 @@ public class EfiTests
     }
 
     [Fact]
-    public async Task Billet_UsesAuthorizeThenOneStep_WithCents()
+    public async Task Billet_UsesAuthorizeThenOneStep_WithCents_AndEmbedsPix()
     {
         var stub = new Stub(); var efi = new TestEfi(stub, new Settings());
         var r = await efi.CreateAsync(false, new EfiDebtor("Fulano", "52998224725", "f@x.com", "(62) 99999-0000"), 199.9m, Due, "Mensalidade");
         Assert.Equal("4321", r.Id);
         Assert.Equal("https://boleto/4321", r.Url);
+        Assert.Equal("00020126PIXBOLETO", r.PixPayload);
+        Assert.Equal("QkFS", r.PixQrCodeBase64);
+        Assert.Equal("34191.79001 01043.510047 91020.150008 1 96610000019990", r.BarCode);
         Assert.Contains(stub.Calls, c => c.Url == "https://cobrancas.api.efipay.com.br/v1/authorize" && c.Auth!.StartsWith("Basic "));
         var body = JsonNode.Parse(stub.Calls.Single(c => c.Url.EndsWith("/charge/one-step")).Body)!;
         Assert.Equal(19990, (int)body["items"]![0]!["value"]!);
         Assert.Equal("2030-05-10", (string?)body["payment"]!["banking_billet"]!["expire_at"]);
         Assert.Equal("52998224725", (string?)body["payment"]!["banking_billet"]!["customer"]!["cpf"]);
+    }
+
+    [Fact]
+    public async Task Billet_SendsFineAndInterest_WhenConfigured()
+    {
+        var s = new Settings(); s.V[SettingKeys.EfiBoletoFinePercent] = "2"; s.V[SettingKeys.EfiBoletoInterestMonthlyPercent] = "1"; s.V[SettingKeys.EfiBoletoMessage] = "Pague em dia";
+        var stub = new Stub(); var efi = new TestEfi(stub, s);
+        await efi.CreateAsync(false, new EfiDebtor("Fulano", "52998224725", null, null), 100m, Due, null);
+        var body = JsonNode.Parse(stub.Calls.Single(c => c.Url.EndsWith("/charge/one-step")).Body)!;
+        var billet = body["payment"]!["banking_billet"]!;
+        Assert.Equal(200, (int)billet["configurations"]!["fine"]!);
+        Assert.Equal(100, (int)billet["configurations"]!["interest"]!["value"]!);
+        Assert.Equal("monthly", (string?)billet["configurations"]!["interest"]!["type"]);
+        Assert.Equal("Pague em dia", (string?)billet["message"]);
     }
 
     [Fact]
@@ -125,7 +142,7 @@ public class EfiTests
         public string Status { get; set; } = "PENDING";
         public List<bool> PixFlags { get; } = new();
         public Task<EfiCharge> CreateAsync(bool pix, EfiDebtor d, decimal value, DateTime due, string? description, CancellationToken ct = default)
-        { PixFlags.Add(pix); return Task.FromResult(new EfiCharge("tx1", "PENDING", null, pix ? "payload" : null, null, null, null)); }
+        { PixFlags.Add(pix); return Task.FromResult(new EfiCharge("tx1", "PENDING", null, "payload", null, null, null, "barcode1", "http://pdf/1")); }
         public Task<EfiCharge> GetAsync(bool pix, string id, CancellationToken ct = default)
             => Task.FromResult(new EfiCharge(id, Status, null, null, null, Status == "RECEIVED" ? 100m : null, Status == "RECEIVED" ? DateTime.UtcNow : null));
         public Task<bool> CancelAsync(bool pix, string id, CancellationToken ct = default) => Task.FromResult(true);
@@ -158,7 +175,10 @@ public class EfiTests
         Assert.Equal("EFI", ch.Provider);
         Assert.Equal("tx1", ch.AsaasId);
         Assert.Equal("payload", ch.PixPayload);
+        Assert.Equal("barcode1", ch.BoletoBarCode);
+        Assert.True(ch.EfiBillet);
         Assert.Equal(ChargeStatus.Pendente, ch.Status);
+        Assert.Equal(false, efi.PixFlags.Single()); // sempre pela rota combinada (boleto + Pix embutido), mesmo quando o usuário escolhe "Pix"
 
         efi.Status = "RECEIVED";
         Assert.Equal(1, await billing.RefreshOpenEfiAsync());

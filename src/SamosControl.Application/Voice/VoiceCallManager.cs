@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -60,7 +60,7 @@ public class VoiceCallManager
         return null;
     }
 
-    public async Task<VoiceStartResult> StartTestCallAsync(string phone, int? userId, string? userName, string idempotencyKey, CancellationToken ct = default)
+    public async Task<VoiceStartResult> StartTestCallAsync(string phone, int? userId, string? userName,     string idempotencyKey, CancellationToken ct = default, string? purpose = null)
     {
         var norm = PhoneUtil.Normalize(phone); var key = PhoneUtil.Key(phone);
         if (norm == null || key == null) return new(false, null, "Telefone inválido.");
@@ -68,7 +68,7 @@ public class VoiceCallManager
         idempotencyKey = idempotencyKey.Length > 64 ? idempotencyKey[..64] : idempotencyKey;
 
         await _startGate.WaitAsync(ct); // serializa os pedidos de início: limites e duplicidade ficam consistentes
-        VoiceCall call; VoiceAllowedNumber allowed; Lead lead; SdrContact contact;
+        VoiceCall call; VoiceAllowedNumber allowed; (int Id, string Name) person;
         try
         {
             using var scope = _scopes.CreateScope();
@@ -92,10 +92,12 @@ public class VoiceCallManager
             var attempts = l.MaxAttemptsPerDay > 0 ? await db.VoiceCalls.CountAsync(x => x.PhoneKey == key && x.CreatedAt >= since, ct) : 0;
             if (l.MaxAttemptsPerDay > 0 && attempts >= l.MaxAttemptsPerDay) return new(false, null, $"Limite de tentativas nas últimas 24 h atingido ({l.MaxAttemptsPerDay}).");
 
-            (lead, contact) = await VoiceContactResolver.EnsureAsync(db, norm, allowed.Label, ct);
+            var resolved = await ResolveUserAsync(scope.ServiceProvider, db, key, ct);
+            if (resolved == null) return new(false, null, "O número não pertence a um usuário ativo com permissão de uso da Roberta (ai.use).");
+            person = resolved.Value;
             call = new VoiceCall
             {
-                Direction = VoiceDirection.Outbound, State = VoiceCallState.Dialing, Phone = norm, PhoneKey = key, LeadId = lead.Id, ContactName = allowed.Label,
+                Direction = VoiceDirection.Outbound, State = VoiceCallState.Dialing, Phone = norm, PhoneKey = key, ContactName = allowed.Label ?? person.Name,
                 IdempotencyKey = idempotencyKey, StartedByUserId = userId, StartedByName = userName
             };
             db.VoiceCalls.Add(call);
@@ -125,15 +127,15 @@ public class VoiceCallManager
             return new(false, call.Id, "Falha ao iniciar a chamada: " + Short(ex.Message));
         }
         await UpdateAsync(call.Id, c => c.ExternalCallId = externalId);
-        _ = RunAsync(call.Id, externalId, stream, lead.Id, contact.Id, inbound: false);
+        _ = RunAsync(call.Id, externalId,         stream, person.Id, person.Name, norm, inbound: false, purpose);
         return new(true, call.Id, null);
     }
 
-    private async Task RunAsync(int callId, string externalId, ICallStream stream, int leadId, int contactId, bool inbound)
+    private async Task RunAsync(int callId, string externalId, ICallStream stream, int userId, string userName,     string phone, bool inbound, string? purpose = null)
     {
         var l = Limits;
         var host = new CallHost(callId, _scopes, _log);
-        var brain = new RobertaVoiceBrain(_scopes, leadId, contactId, inbound, l.StoreTranscript, $"/Voice/Details/{callId}", _log);
+            var brain = new RobertaVoiceBrain(_scopes, userId, userName, phone, inbound, l.StoreTranscript, _log, purpose, _speech);
         var opt = new VoiceSessionOptions
         {
             MaxSeconds = l.MaxSeconds, RingSeconds = l.RingSeconds,
@@ -242,7 +244,7 @@ public class VoiceCallManager
                     }
                     return "outbound_echo";
                 }
-                return await HandleInboundOfferAsync(db, externalCallId, from, ct);
+                return await HandleInboundOfferAsync(scope, db, externalCallId, from, ct);
             default: return "ignored";
         }
     }
@@ -253,7 +255,7 @@ public class VoiceCallManager
         return m.Success ? PhoneUtil.Key(m.Groups[1].Value) : null;
     }
 
-    private async Task<string> HandleInboundOfferAsync(AppDbContext db, string? externalCallId, string? from, CancellationToken ct)
+    private async Task<string> HandleInboundOfferAsync(IServiceScope scope, AppDbContext db, string? externalCallId, string? from, CancellationToken ct)
     {
         var l = Limits;
         if (string.IsNullOrWhiteSpace(externalCallId) || string.IsNullOrWhiteSpace(from)) return "invalid";
@@ -263,8 +265,9 @@ public class VoiceCallManager
         if (allow == null) return "not_allowed";
         if (await db.VoiceCalls.AnyAsync(x => x.ExternalCallId == externalCallId, ct)) return "duplicate";
         if (_active.Count >= l.MaxConcurrent) return "busy";
-        var (lead, contact) = await VoiceContactResolver.EnsureAsync(db, from, allow.Label, ct);
-        var call = new VoiceCall { Direction = VoiceDirection.Inbound, State = VoiceCallState.Ringing, Phone = PhoneUtil.Normalize(from)!, PhoneKey = key!, LeadId = lead.Id, ContactName = allow.Label, ExternalCallId = externalCallId, IdempotencyKey = "in:" + externalCallId };
+        var person = await ResolveUserAsync(scope.ServiceProvider, db, key!, ct);
+        if (person == null) return "not_allowed";
+        var call = new VoiceCall { Direction = VoiceDirection.Inbound, State = VoiceCallState.Ringing, Phone = PhoneUtil.Normalize(from)!, PhoneKey = key!, ContactName = allow.Label ?? person.Value.Name, ExternalCallId = externalCallId, IdempotencyKey = "in:" + externalCallId };
         db.VoiceCalls.Add(call);
         await db.SaveChangesAsync(ct);
         try
@@ -272,7 +275,7 @@ public class VoiceCallManager
             // callCreator = JID de quem ligou, como recebido no evento (formato exato a confirmar com um webhook real).
             await _gateway.AnswerAsync(from, externalCallId, ct);
             var stream = await _gateway.OpenStreamAsync(externalCallId, ct);
-            _ = RunAsync(call.Id, externalCallId, stream, lead.Id, contact.Id, inbound: true);
+            _ = RunAsync(call.Id, externalCallId, stream, person.Value.Id, person.Value.Name, PhoneUtil.Normalize(from)!, inbound: true);
             return "answered";
         }
         catch (Exception ex)
@@ -280,6 +283,15 @@ public class VoiceCallManager
             await FailAsync(call.Id, "answer_failed", Short(ex.Message));
             return "answer_failed";
         }
+    }
+
+    /// <summary>A ligação só fala com um usuário real: ativo, com este telefone e permissão ai.use (mesma regra do WhatsApp).</summary>
+    private static async Task<(int Id, string Name)?> ResolveUserAsync(IServiceProvider sp, AppDbContext db, string phoneKey, CancellationToken ct)
+    {
+        var users = await db.Users.AsNoTracking().Where(u => u.IsActive && u.Phone != null).ToListAsync(ct);
+        var user = users.FirstOrDefault(u => PhoneUtil.Key(u.Phone) == phoneKey);
+        if (user == null || !await sp.GetRequiredService<PermissionService>().HasAsync(user.Id, Perm.AiUse)) return null;
+        return (user.Id, user.Name);
     }
 
     public async Task RecoverOrphansAsync()

@@ -17,9 +17,10 @@ public class WhatsAppService
     private readonly ILogger<WhatsAppService> _log;
     private readonly IEvolutionInstances _inst;
     private readonly IElevenLabs _voice;
+    private readonly IHttpClientFactory _http;
 
-    public WhatsAppService(AppDbContext db, IEvolutionApiIntegration evo, IEvolutionInstances inst, IElevenLabs voice, SettingsService settings, IServiceScopeFactory scopes, ILogger<WhatsAppService> log)
-    { _db = db; _evo = evo; _inst = inst; _voice = voice; _settings = settings; _scopes = scopes; _log = log; }
+    public WhatsAppService(AppDbContext db, IEvolutionApiIntegration evo, IEvolutionInstances inst, IElevenLabs voice, SettingsService settings, IServiceScopeFactory scopes, ILogger<WhatsAppService> log, IHttpClientFactory http)
+    { _db = db; _evo = evo; _inst = inst; _voice = voice; _settings = settings; _scopes = scopes; _log = log; _http = http; }
 
     public bool IsConfigured => _evo.IsConfigured;
     public bool ServerConfigured => _inst.ServerConfigured;
@@ -253,7 +254,10 @@ public class WhatsAppService
     /// <summary>Responde ao cliente; em áudio (voz da ElevenLabs) quando asAudio, com fallback para texto.</summary>
     public async Task<WhatsAppMessage> SendReplyAsync(int? sellerId, string phone, string text, bool asAudio, int? userId = null, bool fromAgent = false, CancellationToken ct = default)
     {
-        if (asAudio && _voice.VoiceRepliesEnabled && text.Length <= 1500)
+        // O TTS recebe uma versão preparada para fala; o histórico/mensagem guardam o texto original.
+        // Código de confirmação precisa ser lido na tela, então vai como texto.
+        var spoken = asAudio && !SamosControl.Application.Voice.SpeechText.ConfirmCode.IsMatch(text) ? SamosControl.Application.Voice.SpeechText.Normalize(text) : "";
+        if (spoken.Length > 0 && _voice.VoiceRepliesEnabled && spoken.Length <= 1500)
         {
             try
             {
@@ -262,8 +266,11 @@ public class WhatsAppService
                 if (inst != null)
                 {
                     var conv = await GetOrCreateConversationAsync(phone, null, sellerId);
-                    var audio = await _voice.SynthesizeAsync(text, ct);
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    var audio = await _voice.SynthesizeAsync(spoken, ct);
+                    var ttsMs = sw.ElapsedMilliseconds; sw.Restart();
                     var extId = await _inst.SendAudioAsync(inst, conv.Phone, audio, ct);
+                    _log.LogInformation("Áudio WhatsApp: canal=WHATSAPP chars_orig={Orig} chars_fala={Spoken} tts_ms={Tts} bytes={Bytes} envio_ms={Send}", text.Length, spoken.Length, ttsMs, audio.Length, sw.ElapsedMilliseconds);
                     return await StoreOutAsync(conv, extId, text, "audio", userId, fromAgent);
                 }
             }
@@ -286,8 +293,8 @@ public class WhatsAppService
             var perms = scope.ServiceProvider.GetRequiredService<PermissionService>();
             if (!await perms.HasAsync(user.Id, Perm.AiUse)) return;
             var agent = scope.ServiceProvider.GetRequiredService<SamosAgent>();
-            var reply = await agent.HandleAsync(text, new AgentContext(user.Id, user.Name, "WHATSAPP", PhoneUtil.Normalize(phone)));
             var wa = scope.ServiceProvider.GetRequiredService<WhatsAppService>();
+            var reply = await agent.HandleAsync(text, new AgentContext(user.Id, user.Name, "WHATSAPP", PhoneUtil.Normalize(phone), Spoken: viaAudio && wa.VoiceAvailable));
             await wa.SendReplyAsync(null, phone, reply, viaAudio, user.Id, fromAgent: true);
         }
         catch (Exception ex) { _log.LogError(ex, "Falha ao responder via agente no WhatsApp"); }
@@ -562,9 +569,30 @@ public class WhatsAppService
     {
         var ch = await _db.Charges.Include(c => c.Customer).FirstOrDefaultAsync(c => c.Id == chargeId) ?? throw new KeyNotFoundException();
         var phone = ch.Customer?.WhatsApp ?? ch.Customer?.Phone ?? throw new InvalidOperationException("Cliente sem WhatsApp/telefone.");
+        var overdue = ch.DueDate.Date < DateTime.UtcNow.Date;
+        // O PIX copia-e-cola nunca vai em texto puro (gera cobrança bancária repetida): o link abre uma página com Pix e boleto juntos.
+        // Em atraso, manda só o link (incentiva o Pix, que compensa na hora); no prazo, manda também o PDF do boleto em anexo.
         var text = $"Olá, {ch.Customer!.Name}! Segue sua cobrança de {ch.Amount:C2} com vencimento em {ch.DueDate:dd/MM/yyyy}.\n" +
-                   (ch.InvoiceUrl != null ? $"Link: {ch.InvoiceUrl}\n" : "") +
-                   (ch.PixPayload != null ? $"\nPIX copia e cola:\n{ch.PixPayload}" : "");
+                   (ch.InvoiceUrl != null ? $"Pagamento (Pix ou boleto): {ch.InvoiceUrl}\n" : "");
+        if (!overdue && !string.IsNullOrWhiteSpace(ch.BoletoPdfUrl))
+        {
+            var pdf = await TryDownloadPdfAsync(ch.BoletoPdfUrl);
+            if (pdf != null) { await SendDocumentAsync(phone, pdf, $"boleto-{ch.Id}.pdf", text, userId); return; }
+        }
         await SendTextAsync(phone, text, userId);
+    }
+
+    /// <summary>Baixa o PDF do boleto para anexar na mensagem; não falha o envio caso o link esteja indisponível (manda só o texto).</summary>
+    public async Task<byte[]?> TryDownloadPdfAsync(string url, CancellationToken ct = default)
+    {
+        try
+        {
+            var http = _http.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(20);
+            using var res = await http.GetAsync(url, ct);
+            if (!res.IsSuccessStatusCode) return null;
+            return await res.Content.ReadAsByteArrayAsync(ct);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { return null; }
     }
 }

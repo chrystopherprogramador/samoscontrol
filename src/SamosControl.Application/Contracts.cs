@@ -359,6 +359,28 @@ public class ContractService
         await _audit.LogAsync("contracts", "cancel", "Contract", id);
     }
 
+    /// <summary>Troca o vendedor (carteira) do contrato — permitido mesmo após assinado. Só afeta comissões de cobranças pagas depois da troca; as já geradas não são alteradas.</summary>
+    public async Task ChangeSellerAsync(int contractId, int? newSellerId, string? changedByUserName = null)
+    {
+        var c = await _db.Contracts.FindAsync(contractId) ?? throw new KeyNotFoundException("Contrato não encontrado.");
+        if (c.Kind != KindService) throw new InvalidOperationException("Contratos de parceria já pertencem ao próprio vendedor.");
+        var oldSellerId = c.SellerId;
+        if (oldSellerId == newSellerId) return;
+        Seller? newSeller = null;
+        if (newSellerId.HasValue)
+            newSeller = await _db.Sellers.FindAsync(newSellerId.Value) ?? throw new KeyNotFoundException("Vendedor não encontrado.");
+        c.SellerId = newSeller?.Id;
+        // For service contracts the commission % isn't printed in the signed PDF (only partnership contracts show it),
+        // so it's safe to pick up the new seller's current rates here instead of leaving the old/zeroed values.
+        c.ImplementationCommissionPercent = newSeller?.ImplementationPercent ?? 0;
+        c.MonthlyCommissionPercent = newSeller?.MonthlyPercent ?? 0;
+        var oldName = oldSellerId.HasValue ? (await _db.Sellers.FindAsync(oldSellerId.Value))?.Name ?? $"#{oldSellerId}" : "nenhum";
+        var newName = newSeller?.Name ?? "nenhum";
+        _db.ContractEvents.Add(new ContractEvent { ContractId = contractId, Type = "VENDEDOR_ALTERADO", Details = $"{oldName} → {newName}" });
+        await _db.SaveChangesAsync();
+        await _audit.LogAsync("contracts", "change_seller", "Contract", contractId, oldData: oldName, newData: newName, userName: changedByUserName);
+    }
+
     public async Task<ContractParty?> OpenForSigningAsync(string token, string? ip, string? ua)
     {
         if (string.IsNullOrWhiteSpace(token) || token.Length > 64) return null;

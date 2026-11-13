@@ -22,6 +22,11 @@ public class Charge : BaseEntity
     [MaxLength(500)] public string? InvoiceUrl { get; set; }
     public string? PixPayload { get; set; }
     public string? PixQrCodeBase64 { get; set; }
+    /// <summary>Linha digitável do boleto (quando o provedor emite boleto). Preenchida junto com PixPayload nas cobranças Efí, que já saem com Pix e boleto juntos.</summary>
+    [MaxLength(100)] public string? BoletoBarCode { get; set; }
+    [MaxLength(500)] public string? BoletoPdfUrl { get; set; }
+    /// <summary>true quando a cobrança Efí foi criada pela rota combinada (Cobranças/boleto, que já embute o Pix); controla qual endpoint usar ao atualizar/cancelar. Cobranças antigas (Pix puro via certificado) ficam false.</summary>
+    public bool EfiBillet { get; set; }
     public DateTime? PaidAt { get; set; }
     public decimal? PaidAmount { get; set; }
     [MaxLength(500)] public string? Description { get; set; }
@@ -106,7 +111,7 @@ public class AiMessage : BaseEntity
 }
 
 // ---------- Automation ----------
-public enum JobType { SyncLeads, SendWhatsApp, CheckServices, GenerateReport, Reminder, CheckBilling }
+public enum JobType { SyncLeads, SendWhatsApp, CheckServices, GenerateReport, Reminder, CheckBilling, PlaceCall }
 public enum ExecutionStatus { Running, Success, Failed }
 
 public class AutomationJob : BaseEntity

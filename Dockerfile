@@ -21,6 +21,8 @@ RUN apt-get update \
     && mkdir -p /data && chown samos:samos /data
 WORKDIR /app
 COPY --from=build /app/publish .
+# Uploaded ZIPs may carry mode 000 files; the app runs as the non-root "samos" user.
+RUN chmod -R a+rX /app
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh && chmod +x /usr/local/bin/docker-entrypoint.sh
 

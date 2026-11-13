@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SamosControl.Domain;
+using SamosControl.Application.Voice;
 using SamosControl.Infrastructure;
 using SamosControl.Integrations;
 
@@ -103,21 +104,37 @@ public class AutomationService
             }
             case JobType.CheckBilling:
             {
-                var n = await _sp.GetRequiredService<BillingService>().MarkOverdueAsync();
+                // Each step is isolated: a failure in one (e.g. Axis offline) must never prevent charges from being generated or notices from being sent.
+                var errors = new List<string>();
+                async Task<T> Step<T>(string name, Func<Task<T>> run, T fallback)
+                {
+                    try { return await run(); }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                    catch (Exception ex)
+                    {
+                        errors.Add(name);
+                        log($"Falha em '{name}': {ex.Message}", "ERROR");
+                        _log.LogError(ex, "CheckBilling: etapa {Step} falhou", name);
+                        return fallback;
+                    }
+                }
+                var n = await Step("vencidas", () => _sp.GetRequiredService<BillingService>().MarkOverdueAsync(), 0);
                 L($"Cobranças marcadas como vencidas: {n}");
-                var paid = await _sp.GetRequiredService<BillingService>().RefreshOpenEfiAsync(ct);
+                var paid = await Step("atualização Efí", () => _sp.GetRequiredService<BillingService>().RefreshOpenEfiAsync(ct), 0);
                 L($"Cobranças Efí atualizadas: {paid}");
-                var lic = await _sp.GetRequiredService<AxisBridgeService>().GenerateLicenseChargesAsync(ct);
+                var lic = await Step("licenças do Axis", () => _sp.GetRequiredService<AxisBridgeService>().GenerateLicenseChargesAsync(ct), 0);
                 if (lic > 0) L($"Cobranças de licenças do Axis geradas: {lic}");
-                var axis = await _sp.GetRequiredService<AxisBridgeService>().SyncPaidAsync(ct);
+                var axis = await Step("baixa no Axis", () => _sp.GetRequiredService<AxisBridgeService>().SyncPaidAsync(ct), 0);
                 if (axis > 0) L($"Mensalidades confirmadas no Axis: {axis}");
-                if (n > 0) await _sp.GetRequiredService<NotificationService>().CreateAsync(NotificationType.Warning, NotificationSource.Billing, $"{n} cobranças vencidas", null, "/Charges");
-                var gen = await _sp.GetRequiredService<ContractBillingService>().GenerateDueAsync(ct);
+                if (n > 0) await Step("notificação de vencidas", async () => { await _sp.GetRequiredService<NotificationService>().CreateAsync(NotificationType.Warning, NotificationSource.Billing, $"{n} cobranças vencidas", null, "/Charges"); return 0; }, 0);
+                var gen = await Step("contratos", () => _sp.GetRequiredService<ContractBillingService>().GenerateDueAsync(ct), 0);
                 L($"Cobranças de contratos geradas: {gen}");
-                var notices = await _sp.GetRequiredService<ChargeNoticeService>().RunAsync(ct);
-                if (notices.Sent + notices.Failed > 0) L($"Avisos de cobrança: {notices.Sent} enviado(s), {notices.Failed} com erro");
-                var com = await _sp.GetRequiredService<CommissionService>().ProcessAsync(ct);
+                var notices = await Step("avisos de cobrança", () => _sp.GetRequiredService<ChargeNoticeService>().RunAsync(ct), new NoticeRunResult(0, 0, 0, null));
+                if (notices.Note != null) L("Avisos de cobrança: " + notices.Note);
+                L($"Avisos de cobrança: {notices.Sent} enviado(s), {notices.Failed} com erro, {notices.Skipped} ignorado(s) (sem contato, canal não configurado, já enviado ou tentativas esgotadas)");
+                var com = await Step("comissões", () => _sp.GetRequiredService<CommissionService>().ProcessAsync(ct), new CommissionRun(0, 0, 0, 0));
                 L($"Comissões: {com.Created} gerada(s), {com.Paid} paga(s), {com.Failed} com erro, {com.Cancelled} cancelada(s)");
+                if (errors.Count > 0) throw new InvalidOperationException("Etapas com falha: " + string.Join(", ", errors) + ". Veja o log da execução.");
                 return $"{n} cobranças marcadas como vencidas; {gen} cobrança(s) de contratos geradas; {paid} cobrança(s) Efí atualizadas; comissões: {com.Created} geradas, {com.Paid} pagas";
             }
             case JobType.SendWhatsApp:
@@ -150,8 +167,95 @@ public class AutomationService
                 if (sent == 0) L(wa.IsConfigured ? "Nenhum número em 'phones': relatório só na notificação do painel." : "WhatsApp não configurado: relatório só na notificação do painel.");
                 return $"Relatório gerado (veja em Notificações); enviado a {sent} número(s)";
             }
+            case JobType.PlaceCall: return await PlaceCallAsync(job, cfg, log, ct);
             default: throw new NotSupportedException("Tipo de job desconhecido.");
         }
+    }
+
+    public const int CallMaxLateMinutes = 15;
+
+    /// <summary>
+    /// Ligação agendada da Roberta para o próprio dono. Máquina de estados persistida em ConfigJson (DIAL → CHECK → fim/retry),
+    /// então sobrevive a reinício. A discagem usa chave idempotente por job+tentativa: nenhuma ligação duplicada.
+    /// </summary>
+    private async Task<string> PlaceCallAsync(AutomationJob job, JsonObject cfg, Action<string, string> log, CancellationToken ct)
+    {
+        string? C(string k) => (cfg[k] as JsonValue)?.ToString();
+        int I(string k, int d) => int.TryParse(C(k), out var n) ? n : d;
+        var now = DateTime.UtcNow;
+        int? userId = job.CreatedByUserId;
+        if (userId == null && int.TryParse(C("userId"), out var u)) userId = u;
+        var msg = C("message") ?? "";
+        var attempt = I("attempt", 1); var max = Math.Clamp(I("maxAttempts", 3), 1, 5); var retryMin = Math.Clamp(I("retryMinutes", 5), 1, 60);
+        var phase = C("phase") ?? "DIAL";
+        var user = userId.HasValue ? await _db.Users.FirstOrDefaultAsync(x => x.Id == userId && x.IsActive, ct) : null;
+        if (user == null || string.IsNullOrWhiteSpace(user.Phone)) { job.IsEnabled = false; throw new InvalidOperationException("Usuário dono da ligação sem telefone cadastrado ou inativo."); }
+        var voice = _sp.GetRequiredService<VoiceCallManager>();
+
+        string? failure = null;
+        if (phase == "CHECK")
+        {
+            var callId = I("callId", 0);
+            var call = await _db.VoiceCalls.AsNoTracking().FirstOrDefaultAsync(x => x.Id == callId, ct);
+            if (call == null) failure = "registro da ligação não encontrado";
+            else if (call.State is not (VoiceCallState.Completed or VoiceCallState.Failed))
+            {
+                if (now - call.CreatedAt < TimeSpan.FromMinutes(15)) { job.NextRunAt = now.AddSeconds(30); return "Ligação em andamento; verificação em 30 s."; }
+                failure = "ligação sem desfecho após 15 min";
+            }
+            else if (call.ConnectedAt != null) { job.IsEnabled = false; job.NextRunAt = null; return $"Ligação atendida ({call.DurationSeconds}s)."; }
+            else failure = call.EndReason == null ? "não atendida" : $"não atendida ({call.EndReason})";
+        }
+        else
+        {
+            var scheduled = DateTime.TryParse(C("scheduledFor"), null, System.Globalization.DateTimeStyles.RoundtripKind, out var s) ? s.ToUniversalTime() : now;
+            if (attempt == 1 && now - scheduled > TimeSpan.FromMinutes(CallMaxLateMinutes))
+            {
+                await FallbackAsync(job, user, msg, "o sistema estava indisponível no horário combinado", log, ct);
+                job.IsEnabled = false; job.NextRunAt = null;
+                throw new InvalidOperationException($"Ligação não realizada: horário combinado passou há mais de {CallMaxLateMinutes} min (aviso enviado por WhatsApp).");
+            }
+            var r = await voice.StartTestCallAsync(user.Phone!, user.Id, "Roberta (agendada)", $"job{job.Id}-a{attempt}", ct, purpose: msg);
+            if (r.Ok && r.CallId.HasValue)
+            {
+                cfg["phase"] = "CHECK"; cfg["callId"] = r.CallId.Value;
+                job.ConfigJson = cfg.ToJsonString();
+                job.NextRunAt = now.AddSeconds(voice.Limits.RingSeconds + 25);
+                return $"Ligação #{r.CallId} iniciada (tentativa {attempt}/{max}).";
+            }
+            failure = r.Error ?? "falha ao iniciar a ligação";
+        }
+
+        log($"Tentativa {attempt}/{max} sem sucesso: {failure}", "WARN");
+        if (attempt < max)
+        {
+            cfg["attempt"] = attempt + 1; cfg["phase"] = "DIAL"; cfg.Remove("callId");
+            job.ConfigJson = cfg.ToJsonString();
+            job.NextRunAt = now.AddMinutes(retryMin);
+            return $"Tentativa {attempt}/{max} falhou ({failure}). Nova tentativa em {retryMin} min.";
+        }
+        await FallbackAsync(job, user, msg, failure!, log, ct);
+        job.IsEnabled = false; job.NextRunAt = null;
+        throw new InvalidOperationException($"Ligação não concluída após {max} tentativa(s): {failure}. Aviso enviado por WhatsApp.");
+    }
+
+    private async Task FallbackAsync(AutomationJob job, User user, string msg, string reason, Action<string, string> log, CancellationToken ct)
+    {
+        var wa = _sp.GetRequiredService<WhatsAppService>();
+        if (job.Config("fallbackWhatsApp") != "false" && wa.IsConfigured)
+        {
+            try { await wa.SendTextAsync(user.Phone!, $"📞 Não consegui te ligar ({reason}). Lembrete: {msg}", null, fromAgent: true, ct); log("Aviso alternativo enviado por WhatsApp", "INFO"); }
+            catch (Exception ex) { log("Falha no aviso por WhatsApp: " + ex.Message, "ERROR"); }
+        }
+        await _sp.GetRequiredService<NotificationService>().CreateAsync(NotificationType.Warning, NotificationSource.Automation, "Ligação agendada não concluída", $"{msg.Truncate(150)} — {reason}", "/Voice", user.Id);
+    }
+}
+
+internal static class JobConfigExt
+{
+    public static string? Config(this AutomationJob j, string key)
+    {
+        try { return string.IsNullOrWhiteSpace(j.ConfigJson) ? null : (JsonNode.Parse(j.ConfigJson) as JsonObject)?[key]?.ToString(); } catch { return null; }
     }
 }
 

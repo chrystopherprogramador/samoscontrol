@@ -26,4 +26,11 @@
     <label class="form-label small mt-2 d-block text-start">Copia e cola</label><textarea class="form-control small" rows="4" readonly data-select="1">@Model.PixPayload</textarea>
 </div></div></div>
 }
+@if (!string.IsNullOrEmpty(Model.BoletoBarCode))
+{
+<div class="col-lg-6"><div class="card"><div class="card-header">Boleto</div><div class="card-body text-center">
+    <label class="form-label small d-block text-start">Linha digitável</label><textarea class="form-control small" rows="2" readonly data-select="1">@Model.BoletoBarCode</textarea>
+    @if (!string.IsNullOrEmpty(Model.BoletoPdfUrl)) { <a class="btn btn-sm btn-outline-secondary mt-2" href="@Model.BoletoPdfUrl" target="_blank" rel="noopener noreferrer">Abrir PDF do boleto</a> }
+</div></div></div>
+}
 </div>

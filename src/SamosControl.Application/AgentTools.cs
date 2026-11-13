@@ -8,7 +8,11 @@ using SamosControl.Integrations;
 
 namespace SamosControl.Application;
 
-public record AgentContext(int? UserId, string UserName, string Channel, string? Phone);
+public record AgentContext(int? UserId, string UserName, string Channel, string? Phone, bool Spoken = false)
+{
+    public const string Voice = "VOZ";
+    public bool IsVoiceCall => Channel == Voice;
+}
 public record ToolPlan(string? Error, JsonObject Args, string Description);
 
 /// <summary>
@@ -301,7 +305,7 @@ public class CallMeTool : AgentToolBase
     public CallMeTool(Voice.VoiceCallManager voice, AppDbContext db) { _voice = voice; _db = db; }
     public override string Name => "ligar_para_mim";
     public override string Description => "A Roberta liga por WhatsApp para o usuário e conversa por voz (só números autorizados)";
-    public override string ArgsHelp => "{\"numero\":\"opcional; padrão: o número de quem pediu\"}";
+    public override string ArgsHelp => "{\"numero\":\"opcional; padrão: o número de quem pediu\",\"motivo\":\"o que dizer na ligação (o recado/assunto), ex.: lembrar de ligar para a Camila às 12h\"}";
     public override string Permission => Perm.VoiceCall;
 
     public override async Task<ToolPlan> PlanAsync(AgentContext ctx, JsonObject a)
@@ -318,13 +322,13 @@ public class CallMeTool : AgentToolBase
         var key = PhoneUtil.Key(raw);
         var hit = key == null ? null : allowed.FirstOrDefault(x => x.PhoneKey == key);
         if (hit == null) return new("Esse número não está na lista de autorizados para ligação (com consentimento).", a, "");
-        return new(null, new JsonObject { ["numero"] = hit.Phone }, $"Ligar agora para {hit.Label} ({hit.Phone}) pelo WhatsApp?");
+        return new(null, new JsonObject { ["numero"] = hit.Phone, ["motivo"] = Arg(a, "motivo") }, $"Ligar agora para {hit.Label} ({hit.Phone}) pelo WhatsApp?");
     }
 
     public override async Task<string> ExecuteAsync(AgentContext ctx, JsonObject a, CancellationToken ct)
     {
         var phone = Arg(a, "numero")!;
-        var r = await _voice.StartTestCallAsync(phone, ctx.UserId, ctx.UserName, $"agent:{PhoneUtil.Key(phone)}:{DateTime.UtcNow:yyyyMMddHHmm}", ct);
+        var r = await _voice.StartTestCallAsync(phone, ctx.UserId, ctx.UserName, $"agent:{PhoneUtil.Key(phone)}:{DateTime.UtcNow:yyyyMMddHHmm}", ct, purpose: Arg(a, "motivo"));
         return r.Ok ? (r.Duplicate ? "A ligação já está em andamento." : $"📞 Ligando agora (ligação #{r.CallId}). Atenda no WhatsApp.") : "Não consegui ligar: " + r.Error;
     }
 }

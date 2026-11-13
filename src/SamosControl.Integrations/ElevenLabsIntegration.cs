@@ -56,8 +56,10 @@ public class ElevenLabsIntegration : IElevenLabs
             ["model_id"] = Or(_s.Get(SettingKeys.ElevenLabsModel), DefaultTtsModel),
             ["voice_settings"] = new JsonObject
             {
-                ["stability"] = Num(SettingKeys.ElevenLabsStability, 0.5),
-                ["similarity_boost"] = Num(SettingKeys.ElevenLabsSimilarity, 0.75)
+                ["stability"] = Num(SettingKeys.ElevenLabsStability, 0.4),
+                ["similarity_boost"] = Num(SettingKeys.ElevenLabsSimilarity, 0.8),
+                ["style"] = Num(SettingKeys.ElevenLabsStyle, 0.35),
+                ["use_speaker_boost"] = Bool(SettingKeys.ElevenLabsSpeakerBoost, true)
             }
         };
         try
@@ -100,6 +102,8 @@ public class ElevenLabsIntegration : IElevenLabs
 
     private double Num(string key, double d) =>
         double.TryParse(_s.Get(key)?.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) && v is >= 0 and <= 1 ? v : d;
+
+    private bool Bool(string key, bool d) => bool.TryParse(_s.Get(key), out var v) ? v : d;
 
     private static string Trim(string s) => s.Length > 300 ? s[..300] : s;
 }

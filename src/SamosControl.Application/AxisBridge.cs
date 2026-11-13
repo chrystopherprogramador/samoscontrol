@@ -19,9 +19,10 @@ public class AxisBridgeService
     private readonly BillingService _billing;
     private readonly SettingsService _settings;
     private readonly IHttpClientFactory _http;
+    private readonly AuditService _audit;
 
-    public AxisBridgeService(AppDbContext db, BillingService billing, SettingsService settings, IHttpClientFactory http)
-    { _db = db; _billing = billing; _settings = settings; _http = http; }
+    public AxisBridgeService(AppDbContext db, BillingService billing, SettingsService settings, IHttpClientFactory http, AuditService audit)
+    { _db = db; _billing = billing; _settings = settings; _http = http; _audit = audit; }
 
     public static string Digits(string? s) => new((s ?? "").Where(char.IsDigit).ToArray());
 
@@ -66,6 +67,10 @@ public class AxisBridgeService
         var since = DateTime.UtcNow.AddDays(-10);
         var paid = await _db.Charges.AsNoTracking().Include(c => c.Customer)
             .Where(c => c.Kind == "MENSALIDADE" && c.Status == ChargeStatus.Pago && c.PaidAt >= since).ToListAsync(ct);
+        // Charges settled because the client already paid in Axis must not extend the license a second time.
+        var paidIds = paid.Select(c => c.Id.ToString()).ToList();
+        var viaAxis = (await _db.AuditLogs.AsNoTracking().Where(a => a.Action == "settle_external" && a.EntityId != null && paidIds.Contains(a.EntityId)).Select(a => a.EntityId!).ToListAsync(ct)).ToHashSet();
+        paid = paid.Where(c => !viaAxis.Contains(c.Id.ToString())).ToList();
         var sent = 0;
         var http = _http.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(10);
@@ -90,6 +95,37 @@ public class AxisBridgeService
     {
         var p = (externalRef ?? "").Split(':');
         return p.Length == 3 && p[0] == "axis" ? p[1] : null;
+    }
+
+    public record LicenseRenewedResult(int Settled, bool Duplicate, string Message);
+
+    /// <summary>
+    /// O Axis informa que a licença foi renovada mediante pagamento feito no próprio Axis: dá baixa nas mensalidades em aberto do cliente
+    /// (primeiro a da validade anterior, depois as mais antigas) e cancela as cobranças no gateway. Idempotente por referência.
+    /// </summary>
+    public async Task<LicenseRenewedResult> OnLicenseRenewedAsync(string? subdominio, string documento, DateTime? validadeAnterior, int meses, string reference, CancellationToken ct = default)
+    {
+        var doc = Digits(documento);
+        if (doc.Length is not (11 or 14) || string.IsNullOrWhiteSpace(reference)) throw new ArgumentException("Informe documento (CPF/CNPJ) e referência.");
+        var marker = "ref=" + reference.Trim();
+        if (await _db.AuditLogs.AnyAsync(a => a.Action == "axis_license_renewed" && a.NewData == marker, ct))
+            return new(0, true, "Renovação já processada.");
+
+        var ids = (await _db.Customers.AsNoTracking().Where(c => c.Document != null).Select(c => new { c.Id, c.Document }).ToListAsync(ct))
+            .Where(c => Digits(c.Document) == doc).Select(c => c.Id).ToList();
+        var open = ids.Count == 0 ? new List<Charge>()
+            : await _db.Charges.Where(c => ids.Contains(c.CustomerId) && c.Kind == BillingPlan.Monthly && (c.Status == ChargeStatus.Pendente || c.Status == ChargeStatus.Vencido))
+                .OrderBy(c => c.DueDate).ToListAsync(ct);
+        var key = !string.IsNullOrWhiteSpace(subdominio) && validadeAnterior.HasValue ? $"axis:{subdominio.Trim().ToLowerInvariant()}:{validadeAnterior.Value:yyyyMMdd}" : null;
+        var pick = open.Where(c => key != null && c.ExternalRef == key).Concat(open.Where(c => key == null || c.ExternalRef != key))
+            .Take(Math.Max(1, meses)).ToList();
+
+        var settled = 0;
+        foreach (var ch in pick)
+            if (await _billing.SettleExternallyAsync(ch.Id, "Axis", reference, ct)) settled++;
+        // Registered even when nothing was open, so a retry never settles a charge created later.
+        await _audit.LogAsync("billing", "axis_license_renewed", "Customer", doc, newData: marker);
+        return new(settled, false, settled > 0 ? $"{settled} cobrança(s) baixada(s)." : "Nenhuma cobrança em aberto para este cliente.");
     }
 
     private sealed record LicencaDto(string? Subdominio, string? Nome, string? Documento, string? Email, decimal ValorMensal, string? Validade, string? Plano = null, bool Ativo = true);
@@ -170,14 +206,14 @@ public class AxisBridgeService
             using var req = new HttpRequestMessage(HttpMethod.Get, baseUrl + "/api/integracao/samos/licencas");
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Trim());
             using var res = await http.SendAsync(req, ct);
-            if (!res.IsSuccessStatusCode) return 0;
+            if (!res.IsSuccessStatusCode) throw new InvalidOperationException($"Axis respondeu {(int)res.StatusCode} ao listar licenças para cobrança.");
             var raw = await res.Content.ReadFromJsonAsync<List<LicencaDto>>(cancellationToken: ct) ?? new();
             licencas = raw.Where(x => DateTime.TryParseExact(x.Validade, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
                 .Select(x => new AxisLicenca(x.Subdominio ?? "", x.Nome ?? x.Subdominio ?? "", Digits(x.Documento), x.Email, x.ValorMensal,
                     DateTime.ParseExact(x.Validade!, "yyyy-MM-dd", CultureInfo.InvariantCulture)))
                 .Where(x => x.Subdominio.Length > 0 && x.Documento.Length is 11 or 14 && x.ValorMensal > 0).ToList();
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { return 0; }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { throw new InvalidOperationException("Não foi possível consultar as licenças no Axis: " + ex.Message, ex); }
 
         var today = AppTime.Now.Date;
         var customers = await _db.Customers.Where(c => c.Document != null).ToListAsync(ct);
@@ -185,6 +221,7 @@ public class AxisBridgeService
             .Where(c => c.Status == ContractStatus.Assinado && !c.BillingClosed && c.MonthlyValue > 0 && c.CustomerId != null)
             .Select(c => c.CustomerId!.Value).ToListAsync(ct)).ToHashSet();
         var created = 0;
+        var errors = new List<string>();
         foreach (var l in licencas)
         {
             if (l.Validade.Date > today.AddDays(daysBefore) || l.Validade.Date < today.AddDays(-maxOverdue)) continue;
@@ -206,8 +243,14 @@ public class AxisBridgeService
                     $"Licença Axis {l.Nome} - vencimento {l.Validade:dd/MM/yyyy}", ct, "MENSALIDADE", 0, key);
                 created++;
             }
-            catch (Exception ex) when (ex is IntegrationException or ArgumentException) { /* tenta no próximo ciclo */ }
+            catch (Exception ex) when (ex is IntegrationException or ArgumentException or DbUpdateException or InvalidOperationException)
+            {
+                _db.ChangeTracker.Clear();
+                customers = await _db.Customers.Where(c => c.Document != null).ToListAsync(ct);
+                errors.Add($"{l.Subdominio}: {ex.Message.Truncate(200)}");
+            }
         }
+        if (errors.Count > 0) throw new InvalidOperationException($"{created} licença(s) cobrada(s), {errors.Count} com erro: " + string.Join(" | ", errors.Take(5)));
         return created;
     }
 }

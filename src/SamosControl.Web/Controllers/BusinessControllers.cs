@@ -85,6 +85,8 @@ public class ContractsController : AppController
         var c = await _db.Contracts.Include(x => x.Customer).Include(x => x.Parties).ThenInclude(p => p.Signature).Include(x => x.Events.OrderByDescending(e => e.At)).FirstOrDefaultAsync(x => x.Id == id);
         if (c == null) return NotFound();
         ViewBag.Svc = _svc;
+        ViewBag.Sellers = await _db.Sellers.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        ViewBag.CurrentSellerName = c.SellerId.HasValue ? await _db.Sellers.Where(s => s.Id == c.SellerId).Select(s => s.Name).FirstOrDefaultAsync() : null;
         ViewBag.Charges = await _db.Charges.Where(x => x.ContractId == id).OrderBy(x => x.DueDate).ToListAsync();
         ViewBag.WaConfigured = _wa.IsConfigured;
         return View(c);
@@ -152,6 +154,18 @@ public class ContractsController : AppController
         {
             var r = await _svc.ResendLinkAsync(id, partyId);
             if (r.Sent) Flash("Link enviado por WhatsApp."); else FlashFail($"Não foi possível enviar: {r.Message}");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException) { FlashFail(ex.Message); }
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost, RequirePermission(Perm.ContractsChangeSeller)]
+    public async Task<IActionResult> ChangeSeller(int id, int? sellerId)
+    {
+        try
+        {
+            await _svc.ChangeSellerAsync(id, sellerId, User.Identity?.Name);
+            Flash("Vendedor do contrato atualizado.");
         }
         catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException) { FlashFail(ex.Message); }
         return RedirectToAction(nameof(Details), new { id });

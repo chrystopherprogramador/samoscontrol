@@ -9,6 +9,12 @@ public interface ISettingsReader
     string? Get(string key);
 }
 
+/// <summary>Why the Efí configuration published by the Axis Deployer could not be loaded (null when fine or not in use).</summary>
+public interface IAxisEfiDiagnostics
+{
+    string? AxisEfiError { get; }
+}
+
 public static class SettingKeys
 {
     // Empresa
@@ -51,6 +57,11 @@ public static class SettingKeys
     public const string EfiCertPath = "EFI_CERT_PATH";
     public const string EfiCertBase64 = "EFI_CERT_BASE64";
     public const string EfiCertPassword = "EFI_CERT_PASSWORD";
+    // Boleto emitido pela Efí: multa e juros de mora aplicados após o vencimento, e prazo para baixa automática
+    public const string EfiBoletoFinePercent = "EFI_BOLETO_FINE_PERCENT";
+    public const string EfiBoletoInterestMonthlyPercent = "EFI_BOLETO_INTEREST_MONTHLY_PERCENT";
+    public const string EfiBoletoDaysToWriteOff = "EFI_BOLETO_DAYS_TO_WRITE_OFF";
+    public const string EfiBoletoMessage = "EFI_BOLETO_MESSAGE";
     // Axis (Deployer): fonte única da configuração Efí. Quando preenchidos, os valores EFI_* vêm de lá.
     public const string AxisEfiUrl = "AXIS_EFI_CONFIG_URL";
     public const string AxisEfiToken = "AXIS_EFI_TOKEN";
@@ -82,6 +93,8 @@ public static class SettingKeys
     public const string ElevenLabsSttLanguage = "ELEVENLABS_STT_LANGUAGE";
     public const string ElevenLabsStability = "ELEVENLABS_STABILITY";
     public const string ElevenLabsSimilarity = "ELEVENLABS_SIMILARITY";
+    public const string ElevenLabsStyle = "ELEVENLABS_STYLE";
+    public const string ElevenLabsSpeakerBoost = "ELEVENLABS_SPEAKER_BOOST";
     public const string ElevenLabsVoiceReplies = "ELEVENLABS_VOICE_REPLIES";
     public const string ElevenLabsUrl = "ELEVENLABS_API_URL";
     // Ligações de voz da Roberta (prova de conceito; tudo desligado por padrão)
@@ -139,7 +152,8 @@ public class IntegrationException : Exception
 
 public class NotConfiguredException : IntegrationException
 {
-    public NotConfiguredException(string integration) : base($"Integração '{integration}' não configurada.") { }
+    public NotConfiguredException(string integration, string? reason = null)
+        : base($"Integração '{integration}' não configurada." + (string.IsNullOrWhiteSpace(reason) ? "" : " " + reason)) { }
 }
 
 internal static class Json

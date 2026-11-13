@@ -59,7 +59,15 @@ public class BillingService
     public const string ProviderAsaas = "ASAAS", ProviderEfi = "EFI";
 
     /// <summary>Gateway used for NEW charges. Existing charges keep the gateway that issued them.</summary>
-    public string ActiveProvider => string.Equals(_settings.Get(SettingKeys.BillingProvider)?.Trim(), "efi", StringComparison.OrdinalIgnoreCase) ? ProviderEfi : ProviderAsaas;
+    public string ActiveProvider
+    {
+        get
+        {
+            var chosen = _settings.Get(SettingKeys.BillingProvider)?.Trim();
+            if (string.IsNullOrEmpty(chosen)) return _efi.IsConfigured && !_asaas.IsConfigured ? ProviderEfi : ProviderAsaas;
+            return string.Equals(chosen, "efi", StringComparison.OrdinalIgnoreCase) ? ProviderEfi : ProviderAsaas;
+        }
+    }
     public bool IsConfigured => ActiveProvider == ProviderEfi ? _efi.IsConfigured : _asaas.IsConfigured;
     private static string GatewayName(string provider) => provider == ProviderEfi ? "Efí" : "Asaas";
 
@@ -104,9 +112,11 @@ public class BillingService
         };
         if (provider == ProviderEfi)
         {
-            var e = await _efi.CreateAsync(type == BillingType.Pix, new EfiDebtor(customer.Name, customer.Document ?? "", customer.Email, customer.WhatsApp ?? customer.Phone), amount, dueDate.Date, desc, ct);
-            charge.AsaasId = e.Id; charge.InvoiceUrl = e.Url; charge.Status = MapStatus(e.Status);
-            charge.PixPayload = e.PixPayload; charge.PixQrCodeBase64 = e.PixQrCodeBase64;
+            // Efí's boleto route already embeds a Pix copy-paste/QR for the same charge, so every Efí charge offers
+            // both payment rails through one link regardless of the type picked on the form (no certificate needed).
+            var e = await _efi.CreateAsync(false, new EfiDebtor(customer.Name, customer.Document ?? "", customer.Email, customer.WhatsApp ?? customer.Phone), amount, dueDate.Date, desc, ct);
+            charge.AsaasId = e.Id; charge.InvoiceUrl = e.Url; charge.Status = MapStatus(e.Status); charge.EfiBillet = true;
+            charge.PixPayload = e.PixPayload; charge.PixQrCodeBase64 = e.PixQrCodeBase64; charge.BoletoBarCode = e.BarCode; charge.BoletoPdfUrl = e.PdfUrl;
         }
         else
         {
@@ -133,15 +143,19 @@ public class BillingService
         if (ch.Status == ChargeStatus.Pago) await CommissionsAsync(ct);
     }
 
+    /// <summary>true = use the old mTLS Pix (cobv) endpoint; only for charges created before the combined boleto+Pix route existed.</summary>
+    private static bool EfiPixArg(Charge ch) => !ch.EfiBillet && ch.BillingType == BillingType.Pix;
+
     private async Task<bool> RefreshChargeAsync(Charge ch, CancellationToken ct)
     {
         if (ch.AsaasId == null) return false;
-        var pix = ch.BillingType == BillingType.Pix;
+        var pix = EfiPixArg(ch);
         if (ch.Provider == ProviderEfi)
         {
             var e = await _efi.GetAsync(pix, ch.AsaasId, ct);
             var changed = Apply(ch, MapStatus(e.Status), e.PaidAt, e.PaidValue);
             ch.InvoiceUrl = e.Url ?? ch.InvoiceUrl;
+            if (ch.EfiBillet) { ch.PixPayload ??= e.PixPayload; ch.PixQrCodeBase64 ??= e.PixQrCodeBase64; ch.BoletoBarCode ??= e.BarCode; ch.BoletoPdfUrl ??= e.PdfUrl; }
             return changed;
         }
         var p = await _asaas.GetPaymentAsync(ch.AsaasId, ct);
@@ -188,13 +202,41 @@ public class BillingService
         if (ch.AsaasId != null)
         {
             var ok = ch.Provider == ProviderEfi
-                ? await _efi.CancelAsync(ch.BillingType == BillingType.Pix, ch.AsaasId, ct)
+                ? await _efi.CancelAsync(EfiPixArg(ch), ch.AsaasId, ct)
                 : await _asaas.CancelPaymentAsync(ch.AsaasId, ct);
             if (!ok) throw new InvalidOperationException($"O {GatewayName(ch.Provider)} não permitiu cancelar esta cobrança.");
         }
         ch.Status = ChargeStatus.Cancelado;
         await _db.SaveChangesAsync(ct);
         await _audit.LogAsync("billing", "cancel_charge", "Charge", id);
+    }
+
+    /// <summary>
+    /// Baixa de uma cobrança paga fora do gateway (ex.: o cliente renovou e pagou pelo Axis). Tenta cancelar a cobrança no gateway para
+    /// que não seja paga duas vezes (falha do gateway não impede a baixa), marca como paga e dispara as comissões. Devolve false se não estava em aberto.
+    /// </summary>
+    public async Task<bool> SettleExternallyAsync(int id, string origin, string reference, CancellationToken ct = default)
+    {
+        var ch = await _db.Charges.Include(c => c.Customer).FirstOrDefaultAsync(c => c.Id == id, ct) ?? throw new KeyNotFoundException();
+        if (ch.Status is not (ChargeStatus.Pendente or ChargeStatus.Vencido)) return false;
+        string? gatewayNote = null;
+        if (ch.AsaasId != null)
+        {
+            try
+            {
+                var ok = ch.Provider == ProviderEfi
+                    ? await _efi.CancelAsync(EfiPixArg(ch), ch.AsaasId, ct)
+                    : await _asaas.CancelPaymentAsync(ch.AsaasId, ct);
+                if (!ok) gatewayNote = "gateway não cancelou a cobrança";
+            }
+            catch (IntegrationException ex) { gatewayNote = "gateway: " + ex.Message.Truncate(120); }
+        }
+        ch.Status = ChargeStatus.Pago; ch.PaidAt = DateTime.UtcNow; ch.PaidAmount = ch.Amount;
+        await _db.SaveChangesAsync(ct);
+        await _audit.LogAsync("billing", "settle_external", "Charge", id, newData: $"origin={origin}; ref={reference}; {gatewayNote}");
+        await _notify.CreateAsync(NotificationType.Success, NotificationSource.Billing, "Cobrança paga pelo " + origin, $"{ch.Customer?.Name} • {ch.Amount:C2}" + (gatewayNote != null ? $" (atenção: {gatewayNote})" : ""), "/Charges");
+        await CommissionsAsync(ct);
+        return true;
     }
 
     /// <summary>Applies a status transition; a paid charge only moves on to refunded/cancelled.</summary>

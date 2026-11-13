@@ -52,7 +52,13 @@ public class ElevenLabsVoiceSpeech : IVoiceSpeech
             ["text"] = text,
             ["model_id"] = model.Trim(),
             ["language_code"] = "pt",
-            ["voice_settings"] = new JsonObject { ["stability"] = Num(SettingKeys.ElevenLabsStability, 0.5), ["similarity_boost"] = Num(SettingKeys.ElevenLabsSimilarity, 0.75) }
+            ["voice_settings"] = new JsonObject
+            {
+                ["stability"] = Num(SettingKeys.ElevenLabsStability, 0.4),
+                ["similarity_boost"] = Num(SettingKeys.ElevenLabsSimilarity, 0.8),
+                ["style"] = Num(SettingKeys.ElevenLabsStyle, 0.35),
+                ["use_speaker_boost"] = Bool(SettingKeys.ElevenLabsSpeakerBoost, true)
+            }
         };
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/v1/text-to-speech/{Uri.EscapeDataString(Voice!.Trim())}/stream?output_format=pcm_16000")
         { Content = JsonContent.Create(body) };
@@ -94,6 +100,8 @@ public class ElevenLabsVoiceSpeech : IVoiceSpeech
 
     private double Num(string key, double d) =>
         double.TryParse(_s.Get(key)?.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) && v is >= 0 and <= 1 ? v : d;
+
+    private bool Bool(string key, bool d) => bool.TryParse(_s.Get(key), out var v) ? v : d;
 }
 
 public static class Wav

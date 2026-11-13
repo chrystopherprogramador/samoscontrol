@@ -65,6 +65,23 @@ public class AxisIntegrationController : ControllerBase
         });
     }
 
+    public sealed record LicenseRenewedReq(string? Subdominio, string? Documento, string? ValidadeAnterior, int Meses = 1, string? Referencia = null);
+
+    /// <summary>O Axis avisa que o cliente renovou a licença pagando no Axis: o Samos dá baixa nas mensalidades correspondentes.</summary>
+    [HttpPost("licenca-renovada")]
+    public async Task<IActionResult> LicencaRenovada([FromBody] LicenseRenewedReq r, CancellationToken ct)
+    {
+        if (!Autorizado()) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(r.Referencia) || r.Meses is < 1 or > 24) return BadRequest(new { erro = "Informe referencia e meses (1 a 24)." });
+        DateTime? anterior = DateTime.TryParseExact(r.ValidadeAnterior, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d) ? d : null;
+        try
+        {
+            var res = await _axis.OnLicenseRenewedAsync(r.Subdominio, r.Documento ?? "", anterior, r.Meses, r.Referencia, ct);
+            return Ok(new { baixadas = res.Settled, duplicada = res.Duplicate, mensagem = res.Message });
+        }
+        catch (ArgumentException ex) { return BadRequest(new { erro = ex.Message }); }
+    }
+
     public sealed record EfiWebhookReq(string? Txid);
 
     /// <summary>O Axis recebe o webhook da Efí e repassa aqui o txid das cobranças que pertencem ao SamosControl.</summary>

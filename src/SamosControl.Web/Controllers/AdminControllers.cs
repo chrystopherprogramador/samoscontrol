@@ -220,28 +220,17 @@ public static class SettingCatalog
             new(SettingKeys.GoogleMapPrefix + "EMAIL", "Campo: e-mail"),
             new(SettingKeys.GoogleSyncMinutes, "Sincronizar a cada (min)")
         }),
-        new("cobranca", "Cobrança (provedor)", "bi-credit-card", new SettingField[]
-        {
-            new(SettingKeys.BillingProvider, "Provedor ativo", false, "Digite asaas (padrão) ou efi. Vale para novas cobranças; as já emitidas continuam no provedor de origem.")
-        }),
-        new("asaas", "Asaas", "bi-cash-coin", new SettingField[]
-        {
-            new(SettingKeys.AsaasUrl, "URL da API", false, "Sandbox: https://sandbox.asaas.com/api/v3 · Produção: https://api.asaas.com/v3"),
-            new(SettingKeys.AsaasKey, "API key", true), new(SettingKeys.AsaasWebhookToken, "Token do webhook", true, "Configure o mesmo valor no Asaas (authToken). Obrigatório para receber webhooks.")
-        }),
         new("efi", "Efí Bank", "bi-bank", new SettingField[]
         {
-            new(SettingKeys.AxisEfiUrl, "URL da configuração no Axis", false, "Ex.: https://comercial.websamos.com.br/api/integracao/samos/efi-config. Quando preenchida junto com o token, as credenciais e o certificado abaixo são lidos do Axis (Deployer) e os campos locais ficam só como reserva."),
+            new(SettingKeys.AxisEfiUrl, "URL da configuração no Axis", false, "Ex.: https://comercial.websamos.com.br/api/integracao/samos/efi-config. Credenciais, chave Pix e certificado da Efí são gerenciados no Axis (Deployer) e lidos de lá; não são configurados no Samos."),
             new(SettingKeys.AxisEfiToken, "Token do Axis", true, "Gerado no Deployer em Configurar pagamentos > SamosControl."),
             new(SettingKeys.AxisLicenseBilling, "Cobrar licenças do Axis automaticamente (true/false)", false, "Padrão: false. Gera a mensalidade de cada painel do Axis perto do vencimento da licença, mesmo sem contrato. Painéis de clientes com contrato de mensalidade ativo ficam por conta do contrato."),
             new(SettingKeys.AxisLicenseDaysBefore, "Gerar quantos dias antes do vencimento", false, "Padrão: 10."),
             new(SettingKeys.AxisLicenseMaxOverdue, "Não cobrar licenças vencidas há mais de (dias)", false, "Padrão: 60. Evita cobrar painéis abandonados."),
-            new(SettingKeys.EfiClientId, "Client_Id"), new(SettingKeys.EfiClientSecret, "Client_Secret", true),
-            new(SettingKeys.EfiSandbox, "Homologação (sandbox)?", false, "true para homologação; vazio ou false para produção."),
-            new(SettingKeys.EfiPixKey, "Chave Pix", false, "Chave Pix da conta Efí que recebe (obrigatória para cobranças Pix)."),
-            new(SettingKeys.EfiCertPath, "Caminho do certificado .p12", false, "Ex.: /data/efi/producao.p12 (dentro do volume /data). Alternativa ao campo Base64."),
-            new(SettingKeys.EfiCertBase64, "Certificado .p12 em Base64", true, "Conteúdo do .p12 em Base64 (PowerShell: [Convert]::ToBase64String([IO.File]::ReadAllBytes('arquivo.p12'))). Obrigatório para Pix."),
-            new(SettingKeys.EfiCertPassword, "Senha do certificado", true, "Normalmente vazia nos certificados gerados pela Efí.")
+            new(SettingKeys.EfiBoletoFinePercent, "Multa por atraso (%)", false, "Ex.: 2 = 2% sobre o valor, cobrado uma vez após o vencimento. Deixe vazio para não cobrar multa."),
+            new(SettingKeys.EfiBoletoInterestMonthlyPercent, "Juros de mora ao mês (%)", false, "Ex.: 1 = 1% ao mês, calculado pro-rata dia a dia após o vencimento. Deixe vazio para não cobrar juros."),
+            new(SettingKeys.EfiBoletoDaysToWriteOff, "Dias após o vencimento para não aceitar mais pagamento (0 a 120)", false, "Padrão do banco se vazio."),
+            new(SettingKeys.EfiBoletoMessage, "Mensagem no boleto", false, "Texto exibido como instrução no boleto (até 4 linhas)."),
         }),
         new("evolution", "Evolution API", "bi-whatsapp", new SettingField[]
         {
@@ -269,8 +258,10 @@ public static class SettingCatalog
             new(SettingKeys.ElevenLabsModel, "Modelo de voz (padrão: eleven_multilingual_v2)", false, "Alternativa mais rápida: eleven_flash_v2_5."),
             new(SettingKeys.ElevenLabsSttModel, "Modelo de transcrição (padrão: scribe_v2)"),
             new(SettingKeys.ElevenLabsSttLanguage, "Idioma do áudio recebido (ex.: pt)", false, "Vazio = detectar automaticamente."),
-            new(SettingKeys.ElevenLabsStability, "Estabilidade (0 a 1, padrão 0.5)", false, "Mais alta = voz mais constante; mais baixa = mais expressiva."),
-            new(SettingKeys.ElevenLabsSimilarity, "Similaridade (0 a 1, padrão 0.75)")
+            new(SettingKeys.ElevenLabsStability, "Estabilidade (0 a 1, padrão 0.4)", false, "Mais alta = voz mais constante/robótica; mais baixa = mais expressiva e humana. 0.3–0.45 soa mais natural."),
+            new(SettingKeys.ElevenLabsSimilarity, "Similaridade (0 a 1, padrão 0.8)", false, "Quão fiel à voz original. Muito alto pode realçar artefatos robóticos."),
+            new(SettingKeys.ElevenLabsStyle, "Exagero de estilo (0 a 1, padrão 0.35)", false, "Acrescenta entonação/emoção à fala; 0 desliga. Valores altos deixam mais lento e podem ficar instáveis."),
+            new(SettingKeys.ElevenLabsSpeakerBoost, "Speaker boost (true/false, padrão true)", false, "Reforça a semelhança com a voz original; deixa o timbre mais natural.")
         }),
         new("ligacoes", "Ligações de voz (Roberta)", "bi-telephone", new SettingField[]
         {

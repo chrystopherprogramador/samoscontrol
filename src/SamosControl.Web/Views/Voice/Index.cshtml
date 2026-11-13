@@ -1,4 +1,4 @@
-@using SamosControl.Application.Voice
+﻿@using SamosControl.Application.Voice
 @{
     ViewData["Title"] = "Ligações da Roberta";
     var calls = (List<VoiceCall>)ViewBag.Calls;
@@ -8,9 +8,20 @@
     string Badge(VoiceCallState s) => s switch { VoiceCallState.Failed => "bg-danger", VoiceCallState.Completed => "bg-success", VoiceCallState.Speaking or VoiceCallState.Listening or VoiceCallState.Thinking or VoiceCallState.Connected or VoiceCallState.Interrupted => "bg-primary", _ => "bg-secondary" };
 }
 <div class="alert alert-warning small">
-    Prova de conceito experimental. As ligações usam um protocolo não oficial do WhatsApp (risco de bloqueio do número remetente). Só são permitidos números autorizados abaixo; o áudio nunca é gravado.
+    As ligações usam um protocolo não oficial do WhatsApp (risco de bloqueio do número remetente). A Roberta só liga e atende números autorizados abaixo que pertençam a um usuário ativo com permissão de uso da IA. O áudio nunca é gravado; ações sensíveis (que exigem confirmação) só são feitas por WhatsApp.
 </div>
 @if (why != null) { <div class="alert alert-secondary"><i class="bi bi-info-circle"></i> @why</div> }
+<div class="card mb-3"><div class="card-body small">
+    <h6>Roberta 2.0 · mesma assistente do WhatsApp</h6>
+    <div class="row g-2">
+        <div class="col-md-3"><b>Telefonia:</b> @(why == null ? "pronta" : "indisponível")</div>
+        <div class="col-md-3"><b>Motor de IA:</b> @ViewBag.AiEngine @((bool)ViewBag.AiConfigured ? "(configurado)" : "(não configurado)")</div>
+        <div class="col-md-3"><b>Modelo:</b> @((string?)ViewBag.AiModel ?? "padrão do provedor")</div>
+        <div class="col-md-3"><b>Voz:</b> @((string?)ViewBag.VoiceId ?? "não configurada") · TTS @ViewBag.TtsModel@(string.IsNullOrEmpty((string?)ViewBag.SttModel) ? "" : " · STT " + ViewBag.SttModel)</div>
+        <div class="col-md-6"><b>Latência:</b> @ViewBag.LatencyText</div>
+        <div class="col-md-6"><b>Comportamento:</b> assistente pessoal e administrativa; respostas faladas curtas, memória e ferramentas compartilhadas com o WhatsApp.</div>
+    </div>
+</div></div>
 <div class="row g-3">
     <div class="col-lg-5">
         <div class="card mb-3"><div class="card-body">
@@ -23,7 +34,7 @@
                 </select>
                 <button class="btn btn-success" disabled="@(why != null)"><i class="bi bi-telephone-outbound"></i> Ligar com Roberta</button>
             </form>
-            <div class="small text-muted mt-2">Limites: @lim.MaxConcurrent simultânea(s), @lim.MaxSeconds s por ligação, @(lim.MaxAttemptsPerDay > 0 ? lim.MaxAttemptsPerDay + " tentativas/24 h por número" : "sem limite de tentativas").</div>
+            <div class="small text-muted mt-2">Limites: @lim.MaxConcurrent simultânea(s), @lim.MaxSeconds s por ligação, @(lim.MaxAttemptsPerDay > 0 ? lim.MaxAttemptsPerDay + " tentativas/24 h por número" : "sem limite de tentativas"). O número precisa estar cadastrado em um usuário ativo (ai.use).</div>
         </div></div>
         <div class="card mb-3"><div class="card-body">
             <h6>Números autorizados</h6>
@@ -54,6 +65,24 @@
         }
     </div>
     <div class="col-lg-7">
+        @{ var sched = (List<AutomationJob>)ViewBag.Scheduled; }
+        <div class="card mb-3"><div class="card-body">
+            <h6>Ligações agendadas</h6>
+            @if (sched.Count == 0) { <div class="small text-muted">Nenhuma. Peça à Roberta: "me liga às 11h55 para lembrar de…".</div> }
+            else
+            {
+                <table class="table table-sm align-middle mb-0">
+                    <thead><tr><th>#</th><th>Lembrete</th><th>Próxima execução</th><th>Situação</th></tr></thead>
+                    @foreach (var j in sched)
+                    {
+                        var msg = System.Text.Json.Nodes.JsonNode.Parse(j.ConfigJson ?? "{}")?["message"]?.ToString();
+                        <tr><td>@j.Id</td><td>@msg</td>
+                            <td>@(j.IsEnabled && j.NextRunAt.HasValue ? AppTime.ToLocal(j.NextRunAt.Value).ToString("dd/MM HH:mm") : "—")</td>
+                            <td>@(j.IsEnabled ? "Agendada" : j.LastStatus == ExecutionStatus.Success ? "Concluída" : j.LastStatus == ExecutionStatus.Failed ? "Não concluída" : "Cancelada")</td></tr>
+                    }
+                </table>
+            }
+        </div></div>
         <div class="card"><div class="card-body">
             <h6>Ligações recentes</h6>
             <table class="table table-sm align-middle" id="voiceTable">

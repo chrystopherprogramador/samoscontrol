@@ -12,7 +12,7 @@ namespace SamosControl.Integrations;
 public record EfiDebtor(string Name, string Document, string? Email, string? Phone);
 
 /// <summary>Status uses the same vocabulary as Asaas (PENDING, RECEIVED, OVERDUE, REFUNDED, DELETED) so BillingService.MapStatus is shared.</summary>
-public record EfiCharge(string Id, string Status, string? Url, string? PixPayload, string? PixQrCodeBase64, decimal? PaidValue, DateTime? PaidAt);
+public record EfiCharge(string Id, string Status, string? Url, string? PixPayload, string? PixQrCodeBase64, decimal? PaidValue, DateTime? PaidAt, string? BarCode = null, string? PdfUrl = null);
 
 /// <summary>Outgoing Pix (commission payout). Status: EM_PROCESSAMENTO, REALIZADO or NAO_REALIZADO.</summary>
 public record EfiPixTransfer(string IdEnvio, string Status, string? E2eId);
@@ -47,6 +47,8 @@ public class EfiIntegration : IEfiIntegration
 
     public EfiIntegration(IHttpClientFactory http, ISettingsReader s) { _http = http; _s = s; }
 
+    private string? AxisHint => (_s as IAxisEfiDiagnostics)?.AxisEfiError;
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_s.Get(SettingKeys.EfiClientId)) && !string.IsNullOrWhiteSpace(_s.Get(SettingKeys.EfiClientSecret));
 
     private bool Sandbox => string.Equals(_s.Get(SettingKeys.EfiSandbox)?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
@@ -71,7 +73,7 @@ public class EfiIntegration : IEfiIntegration
         {
             throw new IntegrationException("Certificado Efí (.p12) ilegível: " + ex.Message, ex);
         }
-        if (data is null) throw new NotConfiguredException("Efí Pix (certificado .p12)");
+        if (data is null) throw new NotConfiguredException("Efí Pix (certificado .p12)", AxisHint);
 
         X509Certificate2 cert;
         try { cert = new X509Certificate2(data, pwd, X509KeyStorageFlags.DefaultKeySet); }
@@ -85,7 +87,7 @@ public class EfiIntegration : IEfiIntegration
 
     private HttpClient Client(bool pix)
     {
-        if (!IsConfigured) throw new NotConfiguredException("Efí");
+        if (!IsConfigured) throw new NotConfiguredException("Efí", AxisHint);
         if (pix) return CreatePixClient();
         var c = _http.CreateClient("efi");
         c.Timeout = TimeSpan.FromSeconds(30);
@@ -166,7 +168,7 @@ public class EfiIntegration : IEfiIntegration
     private async Task<EfiCharge> CreatePixAsync(EfiDebtor d, string doc, decimal value, DateTime due, string? description, CancellationToken ct)
     {
         var key = _s.Get(SettingKeys.EfiPixKey);
-        if (string.IsNullOrWhiteSpace(key)) throw new NotConfiguredException("Efí Pix (chave Pix)");
+        if (string.IsNullOrWhiteSpace(key)) throw new NotConfiguredException("Efí Pix (chave Pix)", AxisHint);
         var txid = Guid.NewGuid().ToString("N"); // 32 chars, within the 26-35 alphanumeric limit
         var devedor = new Dictionary<string, object?> { ["nome"] = d.Name.Truncate(200) };
         devedor[doc.Length == 11 ? "cpf" : "cnpj"] = doc;
@@ -195,6 +197,11 @@ public class EfiIntegration : IEfiIntegration
         return new EfiCharge(Json.Str(n["txid"]) ?? txid, MapPixStatus(Json.Str(n["status"])), null, payload, image, null, null);
     }
 
+    /// <summary>
+    /// Every boleto issued through the Cobranças API (charge/one-step with banking_billet) already carries an embedded Pix
+    /// copy-and-paste code/QR for the same charge, so a single boleto charge offers both payment rails through one link
+    /// (no mTLS certificate or EFI_PIX_KEY needed for this route).
+    /// </summary>
     private async Task<EfiCharge> CreateBilletAsync(EfiDebtor d, string doc, decimal value, DateTime due, string? description, CancellationToken ct)
     {
         var customer = new Dictionary<string, object?> { ["name"] = d.Name.Truncate(255) };
@@ -205,15 +212,46 @@ public class EfiIntegration : IEfiIntegration
         if (phone is { Length: > 11 } && phone.StartsWith("55")) phone = phone[2..];
         if (phone is { Length: 10 or 11 }) customer["phone_number"] = phone;
 
+        var billet = new Dictionary<string, object?> { ["expire_at"] = due.ToString("yyyy-MM-dd"), ["customer"] = customer };
+        var configurations = BoletoConfigurations();
+        if (configurations.Count > 0) billet["configurations"] = configurations;
+        var message = _s.Get(SettingKeys.EfiBoletoMessage);
+        if (!string.IsNullOrWhiteSpace(message)) billet["message"] = message.Trim().Truncate(400);
+
         var body = new
         {
             items = new[] { new { name = (description ?? "Cobrança").Truncate(255), value = (int)Math.Round(value * 100m, MidpointRounding.AwayFromZero), amount = 1 } },
-            payment = new { banking_billet = new { expire_at = due.ToString("yyyy-MM-dd"), customer } }
+            payment = new { banking_billet = billet }
         };
         var n = await Send(false, HttpMethod.Post, "/charge/one-step", body, ct);
         var data = n["data"] ?? n;
         var id = Json.Str(data["charge_id"]) ?? throw new IntegrationException("Efí não retornou o id da cobrança.");
-        return new EfiCharge(id, MapBilletStatus(Json.Str(data["status"])), Json.Str(data["link"]) ?? Json.Str(data["pdf"]?["charge"]), null, null, null, null);
+        return ParseBilletCharge(id, data);
+    }
+
+    /// <summary>Reads the multa/juros/prazo settings and converts them to Efí's units (percent * 100; juros sempre ao mês).</summary>
+    private Dictionary<string, object?> BoletoConfigurations()
+    {
+        var cfg = new Dictionary<string, object?>();
+        if (decimal.TryParse(_s.Get(SettingKeys.EfiBoletoFinePercent), NumberStyles.Any, CultureInfo.InvariantCulture, out var fine) && fine > 0)
+            cfg["fine"] = (int)Math.Round(fine * 100m, MidpointRounding.AwayFromZero);
+        if (decimal.TryParse(_s.Get(SettingKeys.EfiBoletoInterestMonthlyPercent), NumberStyles.Any, CultureInfo.InvariantCulture, out var interest) && interest > 0)
+            cfg["interest"] = new { value = (int)Math.Round(interest * 100m, MidpointRounding.AwayFromZero), type = "monthly" };
+        if (int.TryParse(_s.Get(SettingKeys.EfiBoletoDaysToWriteOff), out var days) && days is >= 0 and <= 120)
+            cfg["days_to_write_off"] = days;
+        return cfg;
+    }
+
+    /// <summary>Shared parsing for the banking_billet payload, whichever endpoint returned it (one-step create, or GET by id).</summary>
+    private static EfiCharge ParseBilletCharge(string id, JsonNode? data)
+    {
+        var billet = data?["payment"]?["banking_billet"]; // shape returned by GET /charge/{id}
+        var pix = data?["pix"] ?? billet?["pix"]; // shape returned by POST /charge/one-step puts it straight on "data"
+        var status = Json.Str(data?["status"]) ?? Json.Str(data?["payment"]?["status"]);
+        var link = Json.Str(data?["link"]) ?? Json.Str(data?["billet_link"]) ?? Json.Str(billet?["link"]);
+        var pdf = Json.Str(data?["pdf"]?["charge"]) ?? Json.Str(billet?["pdf"]?["charge"]);
+        var barcode = Json.Str(data?["barcode"]) ?? Json.Str(billet?["barcode"]);
+        return new EfiCharge(id, MapBilletStatus(status), link ?? pdf, Json.Str(pix?["qrcode"]), StripDataUri(Json.Str(pix?["qrcode_image"])), null, null, barcode, pdf);
     }
 
     public async Task<EfiCharge> GetAsync(bool pix, string id, CancellationToken ct = default)
@@ -229,7 +267,7 @@ public class EfiIntegration : IEfiIntegration
         }
         var b = await Send(false, HttpMethod.Get, $"/charge/{Uri.EscapeDataString(id)}", null, ct);
         var data = b["data"] ?? b;
-        return new EfiCharge(id, MapBilletStatus(Json.Str(data["status"])), Json.Str(data["link"]) ?? Json.Str(data["pdf"]?["charge"]), null, null, null, null);
+        return ParseBilletCharge(id, data);
     }
 
     public async Task<bool> CancelAsync(bool pix, string id, CancellationToken ct = default)
@@ -248,7 +286,7 @@ public class EfiIntegration : IEfiIntegration
     {
         if (!System.Text.RegularExpressions.Regex.IsMatch(idEnvio, "^[a-zA-Z0-9]{1,35}$")) throw new ArgumentException("idEnvio inválido.");
         var payer = _s.Get(SettingKeys.EfiPixKey);
-        if (string.IsNullOrWhiteSpace(payer)) throw new NotConfiguredException("Efí Pix (chave Pix)");
+        if (string.IsNullOrWhiteSpace(payer)) throw new NotConfiguredException("Efí Pix (chave Pix)", AxisHint);
         var body = new
         {
             valor = Money(value),

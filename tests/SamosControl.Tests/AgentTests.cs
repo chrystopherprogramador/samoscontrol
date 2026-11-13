@@ -176,6 +176,96 @@ public class AgentTests
         Assert.Equal("drop_database", i!.Tool); // the agent rejects names that are not registered tools (see SamosAgent.ProcessAsync)
         Assert.Null(SamosAgent.ParseLlm("sem json"));
     }
+
+    [Fact]
+    public async Task VoiceChannel_BlocksSensitiveActions_AndLeavesNothingPending()
+    {
+        using var h = new TestHost(AsaasCfg); using var sc = h.Scope();
+        var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Customers.Add(new Customer { Name = "ACME Ltda" });
+        var u = await SeedAsync(db, Perm.BillingCreate, Perm.BillingView, Perm.AiUse);
+        var agent = sc.ServiceProvider.GetRequiredService<SamosAgent>();
+        var reply = await agent.HandleAsync("Gere uma cobrança de R$ 2.000 para ACME", new AgentContext(u.Id, "Op", AgentContext.Voice, "5511999990001", Spoken: true));
+        Assert.Contains("WhatsApp", reply); Assert.DoesNotContain("CONFIRMAR", reply);
+        Assert.Equal(0, await db.Charges.CountAsync());
+        Assert.Equal(0, await db.AiActions.CountAsync(a => a.Status == AiActionStatus.AguardandoConfirmacao));
+        Assert.Equal(1, await db.AiActions.CountAsync(a => a.Status == AiActionStatus.Negada));
+    }
+
+    [Fact]
+    public async Task SpokenMode_AddsVoiceInstructions_AndHistoryIsSharedAcrossChannels()
+    {
+        var ai = new ScriptedAi();
+        ai.Replies.Enqueue("{\"reply\":\"Você tem 12 cobranças pendentes.\"}");
+        ai.Replies.Enqueue("{\"reply\":\"São as 12 pendentes.\"}");
+        using var h = new TestHost(AsaasCfg, s => s.AddSingleton<SamosControl.Integrations.IAiProvider>(ai)); using var sc = h.Scope();
+        var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
+        var u = await SeedAsync(db, Perm.AiUse);
+        var agent = sc.ServiceProvider.GetRequiredService<SamosAgent>();
+        await agent.HandleAsync("verifica as cobranças pendentes", new AgentContext(u.Id, "Op", "WHATSAPP", null));
+        await agent.HandleAsync("e aquelas cobranças que te perguntei?", new AgentContext(u.Id, "Op", AgentContext.Voice, null, Spoken: true));
+        Assert.DoesNotContain("MODO VOZ", ai.Systems[0]);
+        Assert.Contains("MODO VOZ", ai.Systems[1]);
+        Assert.DoesNotContain("vendas", ai.Systems[1], StringComparison.OrdinalIgnoreCase); // nenhum prompt SDR
+        var channels = await db.AiMessages.Select(m => m.Channel).Distinct().CountAsync();
+        Assert.Equal(2, channels);
+    }
+
+    [Fact]
+    public async Task VoiceBrain_UsesTheSameAgent_ReturnsSpokenText_AndNeverSdr()
+    {
+        var ai = new ScriptedAi();
+        ai.Replies.Enqueue("{\"reply\":\"Oi, Chrys! Aqui é a Roberta.\"}");
+        ai.Replies.Enqueue("{\"reply\":\"**Total** 📋 R$ 1.250,00, vence 10/03/2026. Veja https://x.com/a\"}");
+        using var h = new TestHost(AsaasCfg, s => s.AddSingleton<SamosControl.Integrations.IAiProvider>(ai));
+        using var sc = h.Scope();
+        var u = await SeedAsync(sc.ServiceProvider.GetRequiredService<AppDbContext>(), Perm.AiUse);
+        var brain = new SamosControl.Application.Voice.RobertaVoiceBrain(h.Root.GetRequiredService<IServiceScopeFactory>(), u.Id, "Maria Souza", "5511999990001", true, false, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+
+        var opener = await brain.OpenerAsync(default);
+        Assert.StartsWith("Oi, Chrys!", opener); Assert.DoesNotContain("vendas", opener, StringComparison.OrdinalIgnoreCase);
+        var turn = await brain.RespondAsync("qual o total?", default);
+        Assert.Equal(2, ai.Systems.Count);
+        Assert.Contains("MODO VOZ", ai.Systems[1]);
+        Assert.Contains("mil duzentos e cinquenta reais", turn.Reply);
+        Assert.DoesNotContain("http", turn.Reply); Assert.DoesNotContain("*", turn.Reply);
+        Assert.False(turn.EndCall);
+        Assert.True((await brain.RespondAsync("tchau", default)).EndCall);
+    }
+
+    [Fact]
+    public async Task VoiceBrain_PrewarmsOpenerTextAndAudio_DuringDialing_NoLiveWaitWhenAnswered()
+    {
+        var ai = new ScriptedAi();
+        ai.Replies.Enqueue("{\"reply\":\"Oi, Chrys! Ligando pra confirmar sua reunião.\"}");
+        using var h = new TestHost(AsaasCfg, s => s.AddSingleton<SamosControl.Integrations.IAiProvider>(ai));
+        using var sc = h.Scope();
+        var u = await SeedAsync(sc.ServiceProvider.GetRequiredService<AppDbContext>(), Perm.AiUse);
+        var speech = new FakeSpeech();
+        // O brain começa a preparar a abertura assim que é criado (equivalente ao momento da discagem), antes de qualquer "atendimento".
+        var brain = new SamosControl.Application.Voice.RobertaVoiceBrain(h.Root.GetRequiredService<IServiceScopeFactory>(), u.Id, "Maria Souza", "5511999990001", false, false, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, "confirmar a reunião", speech);
+
+        var opener = await brain.OpenerAsync(default);
+        Assert.Contains("Chrys", opener);
+        var audio = await brain.OpenerAudioAsync(default);
+        Assert.NotNull(audio);
+        Assert.True(audio!.Count > 0, "o áudio da abertura deveria ter sido pré-sintetizado");
+        Assert.Single(speech.TtsTexts); // sintetizado só uma vez (na preparação, não de novo ao tocar)
+    }
+
+    [Fact]
+    public async Task VoiceBrain_OpenerAudio_IsNull_WhenNoSpeechProvided()
+    {
+        var ai = new ScriptedAi();
+        ai.Replies.Enqueue("{\"reply\":\"Oi! Tudo bem?\"}");
+        using var h = new TestHost(AsaasCfg, s => s.AddSingleton<SamosControl.Integrations.IAiProvider>(ai));
+        using var sc = h.Scope();
+        var u = await SeedAsync(sc.ServiceProvider.GetRequiredService<AppDbContext>(), Perm.AiUse);
+        var brain = new SamosControl.Application.Voice.RobertaVoiceBrain(h.Root.GetRequiredService<IServiceScopeFactory>(), u.Id, "Maria Souza", "5511999990001", true, false, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+
+        await brain.OpenerAsync(default);
+        Assert.Null(await brain.OpenerAudioAsync(default));
+    }
 }
 
 

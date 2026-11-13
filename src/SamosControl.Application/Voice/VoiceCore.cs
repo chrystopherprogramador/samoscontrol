@@ -171,6 +171,8 @@ public interface IVoiceBrain
     Task<BrainTurn> RespondAsync(string userText, CancellationToken ct);
     /// <summary>Chamado uma vez no fim: grava resultado no CRM e devolve resultado/resumo.</summary>
     Task<BrainSummary> FinishAsync(IReadOnlyList<TranscriptLine> transcript, string endReason, CancellationToken ct);
+    /// <summary>Áudio da abertura já sintetizado (pré-gerado durante a discagem/toque). Null = sintetizar ao vivo com o texto de OpenerAsync.</summary>
+    Task<IReadOnlyList<byte[]>?> OpenerAudioAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<byte[]>?>(null);
 }
 
 public static class VoiceText
@@ -180,14 +182,7 @@ public static class VoiceText
     private static readonly Regex Md = new(@"[*_`#>~]+", RegexOptions.Compiled);
 
     /// <summary>Remove o que não se fala: emojis, markdown, links e quebras de linha.</summary>
-    public static string ForSpeech(string? text)
-    {
-        var t = Url.Replace(text ?? "", "");
-        t = Emoji.Replace(t, "");
-        t = Md.Replace(t, "");
-        t = Regex.Replace(t, @"^\s*[-•]\s*", "", RegexOptions.Multiline);
-        return Regex.Replace(t, @"\s+", " ").Trim();
-    }
+    public static string ForSpeech(string? text) => SpeechText.Normalize(text);
 
     /// <summary>Divide em frases para o TTS começar pela primeira enquanto a seguinte é gerada.</summary>
     public static List<string> Sentences(string text)

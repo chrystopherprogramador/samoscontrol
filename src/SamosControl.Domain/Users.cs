@@ -40,6 +40,7 @@ public static class Perm
     public const string ContractsCreate = "contracts.create";
     public const string ContractsSign = "contracts.sign";
     public const string ContractsTemplates = "contracts.templates";
+    public const string ContractsChangeSeller = "contracts.change_seller";
     public const string BillingView = "billing.view";
     public const string BillingCreate = "billing.create";
     public const string BillingCancel = "billing.cancel";
@@ -66,7 +67,7 @@ public static class Perm
 
     public static readonly string[] All =
     {
-        DashboardView, CrmView, CrmEdit, CrmDelete, ContractsView, ContractsCreate, ContractsSign, ContractsTemplates,
+        DashboardView, CrmView, CrmEdit, CrmDelete, ContractsView, ContractsCreate, ContractsSign, ContractsTemplates, ContractsChangeSeller,
         BillingView, BillingCreate, BillingCancel, WhatsAppView, WhatsAppSend, WhatsAppAll, WhatsAppManage, AiUse, AiHistory,
         AutomationView, AutomationManage, MonitoringView, MonitoringManage,
         UsersManage, RolesManage, AuditView, SettingsManage,         SellersView, SellersManage, CommissionsPay, VoiceView, VoiceCall, VoiceManage
@@ -75,7 +76,7 @@ public static class Perm
     public static Dictionary<string, string[]> DefaultRoles => new()
     {
         ["ADMIN"] = All,
-        ["GESTOR"] = All.Where(p => p is not (UsersManage or RolesManage or SettingsManage or VoiceManage)).ToArray(),
+        ["GESTOR"] = All.Where(p => p is not (UsersManage or RolesManage or SettingsManage or VoiceManage or ContractsChangeSeller)).ToArray(),
         ["COMERCIAL"] = new[] { DashboardView, CrmView, CrmEdit, ContractsView, ContractsCreate, ContractsSign, WhatsAppView, WhatsAppSend, AiUse, SellersView },
         ["FINANCEIRO"] = new[] { DashboardView, CrmView, ContractsView, BillingView, BillingCreate, BillingCancel, AiUse, SellersView, CommissionsPay },
         ["SUPORTE"] = new[] { DashboardView, CrmView, CrmEdit, WhatsAppView, WhatsAppSend, MonitoringView },

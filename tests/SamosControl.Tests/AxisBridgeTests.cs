@@ -114,4 +114,34 @@ public class AxisBridgeTests
         Assert.Equal(2, s.Vencidas);
         Assert.Equal(150m, s.ValorVencido);
     }
+
+    [Fact]
+    public async Task LicenseRenewedInAxis_SettlesOpenMonthly_Once_AndIsNotSentBackToAxis()
+    {
+        using var host = new TestHost(new() { ["AXIS_EFI_TOKEN"] = "tok" }, s => s.AddSingleton<IAsaasIntegration>(new FakeAsaas()));
+        using var scope = host.Scope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var c = new Customer { Name = "ACME", Document = "12.345.678/0001-90" };
+        var outro = new Customer { Name = "Outro", Document = "99.999.999/0001-99" };
+        db.Customers.AddRange(c, outro);
+        await db.SaveChangesAsync();
+        var due = DateTime.SpecifyKind(AppTime.Now.Date.AddDays(2), DateTimeKind.Utc);
+        var mine = new Charge { CustomerId = c.Id, Amount = 100, DueDate = due, Kind = "MENSALIDADE", ExternalRef = $"axis:loja:{due:yyyyMMdd}" };
+        var later = new Charge { CustomerId = c.Id, Amount = 100, DueDate = due.AddMonths(1), Kind = "MENSALIDADE" };
+        var other = new Charge { CustomerId = outro.Id, Amount = 100, DueDate = due, Kind = "MENSALIDADE" };
+        db.Charges.AddRange(mine, later, other);
+        await db.SaveChangesAsync();
+
+        var bridge = scope.ServiceProvider.GetRequiredService<AxisBridgeService>();
+        var r = await bridge.OnLicenseRenewedAsync("loja", "12345678000190", due, 1, "pedido:abc");
+        Assert.Equal(1, r.Settled);
+        var again = await bridge.OnLicenseRenewedAsync("loja", "12345678000190", due, 1, "pedido:abc");
+        Assert.True(again.Duplicate);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(ChargeStatus.Pago, (await db.Charges.FindAsync(mine.Id))!.Status);
+        Assert.Equal(ChargeStatus.Pendente, (await db.Charges.FindAsync(later.Id))!.Status);
+        Assert.Equal(ChargeStatus.Pendente, (await db.Charges.FindAsync(other.Id))!.Status);
+        Assert.True(db.AuditLogs.Any(a => a.Action == "settle_external" && a.EntityId == mine.Id.ToString()));
+    }
 }
