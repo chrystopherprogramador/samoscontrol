@@ -460,6 +460,54 @@ namespace SamosControl.Infrastructure.Migrations
                     b.ToTable("Charges");
                 });
 
+            modelBuilder.Entity("SamosControl.Domain.ChargeNotice", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<int>("ChargeId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Rule")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChargeId", "Rule", "Channel")
+                        .IsUnique();
+
+                    b.ToTable("ChargeNotices");
+                });
+
             modelBuilder.Entity("SamosControl.Domain.Commission", b =>
                 {
                     b.Property<int>("Id")
@@ -2914,6 +2962,9 @@ namespace SamosControl.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("AssignedSellerId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ContactName")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
@@ -2946,6 +2997,9 @@ namespace SamosControl.Infrastructure.Migrations
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
 
+                    b.Property<bool>("Resolved")
+                        .HasColumnType("boolean");
+
                     b.Property<int?>("SellerId")
                         .HasColumnType("integer");
 
@@ -2960,6 +3014,8 @@ namespace SamosControl.Infrastructure.Migrations
                     b.HasIndex("Phone")
                         .IsUnique()
                         .HasFilter("\"SellerId\" IS NULL");
+
+                    b.HasIndex("AssignedSellerId", "Resolved");
 
                     b.HasIndex("SellerId", "Phone")
                         .IsUnique()
@@ -3090,6 +3146,17 @@ namespace SamosControl.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Customer");
+                });
+
+            modelBuilder.Entity("SamosControl.Domain.ChargeNotice", b =>
+                {
+                    b.HasOne("SamosControl.Domain.Charge", "Charge")
+                        .WithMany()
+                        .HasForeignKey("ChargeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Charge");
                 });
 
             modelBuilder.Entity("SamosControl.Domain.Commission", b =>

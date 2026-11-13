@@ -107,9 +107,13 @@ public class AutomationService
                 L($"Cobranças marcadas como vencidas: {n}");
                 var paid = await _sp.GetRequiredService<BillingService>().RefreshOpenEfiAsync(ct);
                 L($"Cobranças Efí atualizadas: {paid}");
+                var axis = await _sp.GetRequiredService<AxisBridgeService>().SyncPaidAsync(ct);
+                if (axis > 0) L($"Mensalidades confirmadas no Axis: {axis}");
                 if (n > 0) await _sp.GetRequiredService<NotificationService>().CreateAsync(NotificationType.Warning, NotificationSource.Billing, $"{n} cobranças vencidas", null, "/Charges");
                 var gen = await _sp.GetRequiredService<ContractBillingService>().GenerateDueAsync(ct);
                 L($"Cobranças de contratos geradas: {gen}");
+                var notices = await _sp.GetRequiredService<ChargeNoticeService>().RunAsync(ct);
+                if (notices.Sent + notices.Failed > 0) L($"Avisos de cobrança: {notices.Sent} enviado(s), {notices.Failed} com erro");
                 var com = await _sp.GetRequiredService<CommissionService>().ProcessAsync(ct);
                 L($"Comissões: {com.Created} gerada(s), {com.Paid} paga(s), {com.Failed} com erro, {com.Cancelled} cancelada(s)");
                 return $"{n} cobranças marcadas como vencidas; {gen} cobrança(s) de contratos geradas; {paid} cobrança(s) Efí atualizadas; comissões: {com.Created} geradas, {com.Paid} pagas";

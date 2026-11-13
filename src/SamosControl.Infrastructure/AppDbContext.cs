@@ -30,6 +30,7 @@ public class AppDbContext : DbContext
     public DbSet<Seller> Sellers => Set<Seller>();
     public DbSet<Commission> Commissions => Set<Commission>();
     public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
+    public DbSet<ChargeNotice> ChargeNotices => Set<ChargeNotice>();
     public DbSet<WhatsAppConversation> WhatsAppConversations => Set<WhatsAppConversation>();
     public DbSet<WhatsAppMessage> WhatsAppMessages => Set<WhatsAppMessage>();
     public DbSet<WhatsAppTemplate> WhatsAppTemplates => Set<WhatsAppTemplate>();
@@ -137,6 +138,12 @@ public class AppDbContext : DbContext
         b.Entity<ContractSignature>().HasIndex(x => x.PartyId).IsUnique();
         b.Entity<ContractEvent>().HasIndex(x => x.ContractId);
 
+        b.Entity<WhatsAppConversation>().HasIndex(x => new { x.AssignedSellerId, x.Resolved });
+        b.Entity<ChargeNotice>(e =>
+        {
+            e.HasIndex(x => new { x.ChargeId, x.Rule, x.Channel }).IsUnique();
+            e.HasOne(x => x.Charge).WithMany().HasForeignKey(x => x.ChargeId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<Charge>(e =>
         {
             e.HasIndex(x => x.AsaasId).IsUnique().HasFilter("\"AsaasId\" IS NOT NULL");

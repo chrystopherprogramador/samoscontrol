@@ -51,6 +51,9 @@ public static class SettingKeys
     public const string EfiCertPath = "EFI_CERT_PATH";
     public const string EfiCertBase64 = "EFI_CERT_BASE64";
     public const string EfiCertPassword = "EFI_CERT_PASSWORD";
+    // Axis (Deployer): fonte única da configuração Efí. Quando preenchidos, os valores EFI_* vêm de lá.
+    public const string AxisEfiUrl = "AXIS_EFI_CONFIG_URL";
+    public const string AxisEfiToken = "AXIS_EFI_TOKEN";
     // Evolution
     public const string EvolutionUrl = "EVOLUTION_API_URL";
     public const string EvolutionKey = "EVOLUTION_API_KEY";
@@ -99,12 +102,23 @@ public static class SettingKeys
     public const string SmtpUser = "SMTP_USER";
     public const string SmtpPassword = "SMTP_PASSWORD";
     public const string SmtpFrom = "SMTP_FROM";
+    // Avisos automáticos de cobrança (WhatsApp e e-mail)
+    public const string NoticeEnabled = "COBRANCA_AVISOS_ATIVOS";
+    public const string NoticeChannels = "COBRANCA_CANAIS";
+    public const string NoticeDaysBefore = "COBRANCA_DIAS_ANTES";
+    public const string NoticeOnDue = "COBRANCA_AVISO_NO_VENCIMENTO";
+    public const string NoticeDaysAfter = "COBRANCA_DIAS_APOS";
+    public const string NoticeHour = "COBRANCA_HORA_ENVIO";
+    public const string NoticeMsgBefore = "COBRANCA_MSG_ANTES";
+    public const string NoticeMsgDue = "COBRANCA_MSG_VENCIMENTO";
+    public const string NoticeMsgAfter = "COBRANCA_MSG_ATRASO";
+    public const string NoticeEmailSubject = "COBRANCA_EMAIL_ASSUNTO";
     // Segurança
     public const string SessionHours = "SESSION_HOURS";
 
     public static readonly HashSet<string> Secrets = new()
     {
-        GoogleApiKey, GoogleBasicPassword, AsaasKey, AsaasWebhookToken, EfiClientSecret, EfiCertBase64, EfiCertPassword, EvolutionKey, EvolutionWebhookToken, SmtpPassword, OllamaApiKey, ElevenLabsKey, VoiceGoApiKey, VoiceGoStreamKey, VoiceWebhookToken
+        GoogleApiKey, GoogleBasicPassword, AsaasKey, AsaasWebhookToken, EfiClientSecret, EfiCertBase64, EfiCertPassword, AxisEfiToken, EvolutionKey, EvolutionWebhookToken, SmtpPassword, OllamaApiKey, ElevenLabsKey, VoiceGoApiKey, VoiceGoStreamKey, VoiceWebhookToken
     };
 }
 

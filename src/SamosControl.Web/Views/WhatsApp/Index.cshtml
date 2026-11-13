@@ -1,43 +1,37 @@
 @{
     ViewData["Title"] = "WhatsApp";
-    var channels = (List<object>)ViewBag.Channels;
+    var tabs = (List<object>)ViewBag.Tabs;
+    var sellers = (List<object>)ViewBag.Sellers;
     var scope = (string)ViewBag.Scope;
     var isAll = (bool)ViewBag.IsAll;
-    var canManage = (bool)ViewBag.CanManage;
     string P(object o, string n) => o.GetType().GetProperty(n)!.GetValue(o)?.ToString() ?? "";
-    string Dot(string st) => st == "CONECTADO" ? "ok" : st == "CONECTANDO" ? "wait" : "off";
 }
 @if (!(bool)ViewBag.Configured) { <div class="alert alert-warning">Evolution API <strong>não configurada</strong>. Veja <a asp-controller="Settings" asp-action="Index" asp-route-category="evolution">Configurações</a>. O histórico recebido continua visível.</div> }
 <div class="wa" id="wa" data-scope="@scope" data-current="@ViewBag.CurrentId" data-can-send="@(((bool)ViewBag.CanSend).ToString().ToLower())" data-all="@isAll.ToString().ToLower()">
-    @if (channels.Count > 1 || isAll)
-    {
-        <div class="wa-channels">
-            @if (isAll)
+    <div class="wa-list">
+        <div class="wa-tabs">
+            @foreach (var t in tabs)
             {
-                <a class="wa-ch @(scope == "all" ? "active" : "")" href="?scope=all"><span class="wa-av"><i class="bi bi-grid"></i></span><span class="wa-ch-name">Todos</span></a>
-            }
-            @foreach (var c in channels)
-            {
-                var cid = P(c, "id"); var st = P(c, "status"); var un = P(c, "unread"); var nm = P(c, "name");
-                <a class="wa-ch @(scope == cid ? "active" : "")" href="?scope=@cid" title="@nm@(P(c, "number") != "" ? " · +" + P(c, "number") : "")">
-                    <span class="wa-av">@if (P(c, "pic") != "") { <img src="@P(c, "pic")" alt="" referrerpolicy="no-referrer" onerror="this.remove()" /> }<b>@nm.Substring(0, 1).ToUpper()</b><i class="wa-dot @Dot(st)"></i></span>
-                    <span class="wa-ch-name">@nm</span>
-                    @if (un != "0") { <span class="badge bg-danger rounded-pill">@un</span> }
-                </a>
+                var key = P(t, "key"); var un = P(t, "unread");
+                <a class="wa-tab @(scope == key ? "active" : "")" href="?scope=@key"><i class="bi @P(t, "icon")"></i> @P(t, "name")@if (un != "0") { <span class="badge bg-danger rounded-pill ms-1">@un</span> }</a>
             }
         </div>
-    }
-    <div class="wa-list">
         <div class="wa-list-head">
             <div class="input-group input-group-sm">
                 <span class="input-group-text"><i class="bi bi-search"></i></span>
                 <input id="waSearch" class="form-control" placeholder="Buscar nome ou telefone" autocomplete="off" />
-                @if ((bool)ViewBag.CanSend && scope != "all") { <button type="button" class="btn btn-outline-secondary" id="waNew" title="Nova conversa"><i class="bi bi-plus-lg"></i></button> }
+                @if ((bool)ViewBag.CanSend) { <button type="button" class="btn btn-outline-secondary" id="waNew" title="Nova conversa"><i class="bi bi-plus-lg"></i></button> }
             </div>
-            @if (canManage && scope != "all" && scope != "0")
-            {
-                <a class="btn btn-sm btn-outline-success w-100 mt-2" asp-action="Connect" asp-route-id="@scope"><i class="bi bi-qr-code"></i> Conexão do WhatsApp</a>
-            }
+            <div class="d-flex gap-2 mt-2">
+                <select id="waState" class="form-select form-select-sm"><option value="open">Abertas</option><option value="resolved">Resolvidas</option></select>
+                @if (isAll)
+                {
+                    <select id="waSellerFilter" class="form-select form-select-sm" title="Filtrar por vendedor">
+                        <option value="">Vendedor…</option>
+                        @foreach (var s in sellers) { <option value="@P(s, "Id")" selected="@(scope == P(s, "Id"))">@P(s, "Name")</option> }
+                    </select>
+                }
+            </div>
         </div>
         <div id="waConvs" class="wa-convs"><div class="p-3 text-muted small">Carregando…</div></div>
     </div>
@@ -49,6 +43,10 @@
                 <span class="wa-av" id="waHeadAv"></span>
                 <div class="flex-grow-1"><div class="fw-semibold" id="waHeadName"></div><div class="small text-muted" id="waHeadSub"></div></div>
                 <select id="waHeadStatus" class="form-select form-select-sm d-none" title="Status do lead"></select>
+                <select id="waAssign" class="form-select form-select-sm d-none" title="Atribuir a"><option value="">Fila (sem dono)</option>@foreach (var s in sellers) { <option value="@P(s, "Id")">@P(s, "Name")</option> }</select>
+                <button type="button" class="btn btn-sm btn-outline-primary d-none" id="waClaim"><i class="bi bi-hand-index"></i> Assumir</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="waRelease" title="Devolver para a fila"><i class="bi bi-box-arrow-left"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-success d-none" id="waResolve"><i class="bi bi-check2-circle"></i> Resolver</button>
                 <span id="waHeadLinks"></span>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="waSound" title="Som de notificação"><i class="bi bi-bell"></i></button>
                 <button type="button" class="btn btn-sm btn-outline-danger d-none" id="waDelete" title="Apagar conversa"><i class="bi bi-trash"></i></button>

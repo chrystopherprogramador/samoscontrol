@@ -16,6 +16,7 @@
     <div class="card-footer d-flex gap-2 flex-wrap">
         <form method="post" asp-action="Refresh" asp-route-id="@Model.Id"><button class="btn btn-sm btn-outline-primary">Atualizar status</button></form>
         @if (Perms.Has(Perm.WhatsAppSend)) { <form method="post" asp-action="SendWhatsApp" asp-route-id="@Model.Id"><button class="btn btn-sm btn-outline-success"><i class="bi bi-whatsapp"></i> Enviar por WhatsApp</button></form> }
+        @if (Perms.Has(Perm.WhatsAppSend)) { <form method="post" asp-action="SendEmail" asp-route-id="@Model.Id"><button class="btn btn-sm btn-outline-secondary"><i class="bi bi-envelope"></i> Enviar por e-mail</button></form> }
         @if (Perms.Has(Perm.BillingCancel) && Model.Status is ChargeStatus.Pendente or ChargeStatus.Vencido) { <form method="post" asp-action="Cancel" asp-route-id="@Model.Id" data-confirm="Cancelar esta cobrança?"><button class="btn btn-sm btn-outline-danger">Cancelar</button></form> }
     </div></div></div>
 @if (!string.IsNullOrEmpty(Model.PixPayload))

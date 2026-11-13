@@ -73,6 +73,9 @@ public static class DependencyInjection
         s.AddScoped<ContractService>();
         s.AddScoped<CommissionService>();
         s.AddScoped<BillingService>();
+        s.AddScoped<AxisBridgeService>();
+        s.AddSingleton<IEmailSender, SmtpEmailSender>();
+        s.AddScoped<ChargeNoticeService>();
         s.AddScoped<WhatsAppService>();
         s.AddScoped<MonitoringService>();
         s.AddScoped<DashboardService>();

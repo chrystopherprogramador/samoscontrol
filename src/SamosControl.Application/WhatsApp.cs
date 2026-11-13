@@ -39,6 +39,13 @@ public class WhatsAppService
             var cust = customers.FirstOrDefault(c => PhoneUtil.Key(c.WhatsApp) == key || PhoneUtil.Key(c.Phone) == key);
             conv.CustomerId = cust?.Id;
             conv.ContactName ??= cust?.Name;
+            if (sellerId is null)
+            {
+                // Caixa central: o cliente/lead já tem dono → a conversa já nasce atribuída a ele.
+                var owner = conv.CustomerId.HasValue ? await _db.Customers.Where(c => c.Id == conv.CustomerId).Select(c => c.SellerId).FirstOrDefaultAsync() : null;
+                if (owner is null && conv.LeadId.HasValue) owner = await _db.Leads.Where(l => l.Id == conv.LeadId).Select(l => l.SellerId).FirstOrDefaultAsync();
+                conv.AssignedSellerId = owner;
+            }
             if (conv.ContactName == null && conv.LeadId != null) conv.ContactName = await _db.Leads.Where(l => l.Id == conv.LeadId).Select(l => l.Name).FirstOrDefaultAsync();
             _db.WhatsAppConversations.Add(conv);
             await _db.SaveChangesAsync();
@@ -55,10 +62,10 @@ public class WhatsAppService
         return await StoreOutAsync(conv, extId, text, "text", userId, fromAgent);
     }
 
-    public async Task<WhatsAppMessage> SendDocumentAsync(string phone, byte[] content, string fileName, string caption, int? userId = null, CancellationToken ct = default)
+    public async Task<WhatsAppMessage> SendDocumentAsync(string phone, byte[] content, string fileName, string caption, int? userId = null, CancellationToken ct = default, string mimeType = "application/pdf")
     {
         var conv = await GetOrCreateConversationAsync(phone);
-        var extId = await _evo.SendDocumentAsync(conv.Phone, content, fileName, "application/pdf", caption, ct);
+        var extId = await _evo.SendDocumentAsync(conv.Phone, content, fileName, mimeType, caption, ct);
         return await StoreOutAsync(conv, extId, $"[documento] {fileName}" + (string.IsNullOrEmpty(caption) ? "" : $"\n{caption}"), "document", userId, false);
     }
 
@@ -199,6 +206,7 @@ public class WhatsAppService
         if (!m.FromMe)
         {
             conv.UnreadCount++;
+            conv.Resolved = false;
             if (conv.LeadId.HasValue)
             {
                 _db.Interactions.Add(new Interaction { LeadId = conv.LeadId, CustomerId = conv.CustomerId, Type = InteractionType.WhatsApp, Description = "WhatsApp recebido: " + (m.Text ?? m.Type).Truncate(300) });

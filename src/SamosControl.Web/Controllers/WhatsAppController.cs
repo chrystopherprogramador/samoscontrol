@@ -38,41 +38,65 @@ public class WhatsAppController : AppController
         return (all, mine);
     }
 
+    // Caixa central (estilo Chatwoot): o vendedor vê as conversas atribuídas a ele e a fila não atribuída; nunca as de outro vendedor.
     private IQueryable<WhatsAppConversation> Visible((bool All, int? Mine) a) =>
         a.All ? _db.WhatsAppConversations
-        : a.Mine.HasValue ? _db.WhatsAppConversations.Where(c => c.SellerId == a.Mine)
+        : a.Mine.HasValue ? _db.WhatsAppConversations.Where(c => c.SellerId == a.Mine || (c.SellerId == null && (c.AssignedSellerId == null || c.AssignedSellerId == a.Mine)))
         : _db.WhatsAppConversations.Where(c => c.SellerId == null);
 
-    /// <summary>scope: "all" | "0" (empresa) | id do vendedor.</summary>
-    private static IQueryable<WhatsAppConversation> ApplyScope(IQueryable<WhatsAppConversation> q, string? scope) =>
-        string.IsNullOrEmpty(scope) || scope == "all" ? q
-        : int.TryParse(scope, out var n) ? (n == 0 ? q.Where(c => c.SellerId == null) : q.Where(c => c.SellerId == n))
+    /// <summary>scope: "mine" | "unassigned" | "all" | id do vendedor (atribuídas a ele).</summary>
+    private static IQueryable<WhatsAppConversation> ApplyScope(IQueryable<WhatsAppConversation> q, string? scope, int? mine) =>
+        scope == "mine" ? q.Where(c => c.SellerId == mine || (c.SellerId == null && c.AssignedSellerId == mine))
+        : scope == "unassigned" ? q.Where(c => c.SellerId == null && c.AssignedSellerId == null)
+        : int.TryParse(scope, out var n) && n > 0 ? q.Where(c => c.SellerId == n || c.AssignedSellerId == n)
         : q;
 
     private static string Initial(string? s) => string.IsNullOrWhiteSpace(s) ? "#" : s.Trim()[..1].ToUpperInvariant();
+
+    /// <summary>
+    /// Prepara o envio pelo número da empresa: assume a conversa se estiver na fila, bloqueia se for de outro vendedor
+    /// e devolve a assinatura "*Nome*" que identifica quem escreveu. Conversas legadas (WhatsApp próprio do vendedor) não assinam.
+    /// </summary>
+    private async Task<string> CentralSignatureAsync(WhatsAppConversation conv, (bool All, int? Mine) a)
+    {
+        if (conv.SellerId.HasValue) return "";
+        if (conv.AssignedSellerId != null && !a.All && conv.AssignedSellerId != a.Mine) throw new InvalidOperationException("Conversa atribuída a outro vendedor.");
+        if (conv.AssignedSellerId == null && a.Mine.HasValue)
+        {
+            var won = await _db.WhatsAppConversations.Where(c => c.Id == conv.Id && c.AssignedSellerId == null).ExecuteUpdateAsync(s => s.SetProperty(c => c.AssignedSellerId, a.Mine));
+            if (won == 0) throw new InvalidOperationException("Outro vendedor assumiu esta conversa agora há pouco.");
+            conv.AssignedSellerId = a.Mine;
+            if (conv.LeadId.HasValue) await _wa.ClaimLeadAsync(conv.LeadId.Value, a.Mine.Value, false);
+        }
+        var name = a.Mine.HasValue ? await _db.Sellers.Where(s => s.Id == a.Mine).Select(s => s.Name).FirstOrDefaultAsync()
+            : await _db.Users.Where(u => u.Id == UserId).Select(u => u.Name).FirstOrDefaultAsync();
+        return string.IsNullOrWhiteSpace(name) ? "" : $"*{name.Trim()}*\n";
+    }
 
     public async Task<IActionResult> Index(string? scope, int? id)
     {
         await _wa.MergeDuplicateConversationsAsync();
         var a = await AccessAsync();
-        var channels = new List<object>();
-        if (a.All || !a.Mine.HasValue)
-            channels.Add(new { id = 0, name = "Empresa", status = _evo.IsConfigured ? "CONECTADO" : "DESCONECTADO", number = (string?)null, pic = (string?)null, unread = await _db.WhatsAppConversations.Where(c => c.SellerId == null).SumAsync(c => (int?)c.UnreadCount) ?? 0 });
-        if (a.All || a.Mine.HasValue)
-        {
-            var sellers = await _db.Sellers.Where(s => s.IsActive && (a.All || s.Id == a.Mine)).OrderBy(s => s.Name).ToListAsync();
-            var unread = await _db.WhatsAppConversations.Where(c => c.SellerId != null).GroupBy(c => c.SellerId).Select(g => new { g.Key, N = g.Sum(c => c.UnreadCount) }).ToDictionaryAsync(x => x.Key!.Value, x => x.N);
-            foreach (var s in sellers) await _wa.EnsureSellerPictureAsync(s);
-            foreach (var s in sellers)
-                channels.Add(new { id = s.Id, name = s.Name, status = s.WaStatus, number = s.WaNumber, unread = unread.GetValueOrDefault(s.Id), pic = s.WaPictureUrl });
-        }
-        // Sem escopo explícito: vendedor cai no próprio chat, os demais em "todos".
-        scope ??= a.All ? "all" : (a.Mine?.ToString() ?? "0");
-        if (!a.All) scope = a.Mine?.ToString() ?? "0";
-        ViewBag.Channels = channels;
+        var open = Visible(a).Where(c => !c.Resolved);
+        var tabs = new List<object>();
+        if (a.Mine.HasValue)
+            tabs.Add(new { key = "mine", name = "Minhas", icon = "bi-person", unread = await open.Where(c => c.SellerId == a.Mine || c.AssignedSellerId == a.Mine).SumAsync(c => (int?)c.UnreadCount) ?? 0 });
+        tabs.Add(new { key = "unassigned", name = "Não atribuídas", icon = "bi-inbox", unread = await open.Where(c => c.SellerId == null && c.AssignedSellerId == null).SumAsync(c => (int?)c.UnreadCount) ?? 0 });
+        if (a.All)
+            tabs.Add(new { key = "all", name = "Todas", icon = "bi-grid", unread = await open.SumAsync(c => (int?)c.UnreadCount) ?? 0 });
+        var keys = new List<string>();
+        if (a.Mine.HasValue) keys.Add("mine");
+        keys.Add("unassigned");
+        if (a.All) keys.Add("all");
+        // Vendedor numérico (link antigo/filtro do admin) só vale para quem vê tudo.
+        var numeric = a.All && int.TryParse(scope, out var sid) && sid > 0;
+        if (!numeric && (scope is null || !keys.Contains(scope))) scope = keys[0];
+        ViewBag.Tabs = tabs;
+        ViewBag.Sellers = a.All ? await _db.Sellers.Where(s => s.IsActive).OrderBy(s => s.Name).Select(s => (object)new { s.Id, s.Name }).ToListAsync() : new List<object>();
         ViewBag.Scope = scope;
         ViewBag.CurrentId = id;
         ViewBag.IsAll = a.All;
+        ViewBag.HasSeller = a.Mine.HasValue;
         ViewBag.CanSend = _perms.Has(Perm.WhatsAppSend);
         ViewBag.CanManage = _perms.Has(Perm.WhatsAppManage);
         ViewBag.Configured = _evo.IsConfigured || _wa.ServerConfigured;
@@ -80,10 +104,10 @@ public class WhatsAppController : AppController
     }
 
     [HttpGet]
-    public async Task<IActionResult> List(string? scope, string? q)
+    public async Task<IActionResult> List(string? scope, string? q, bool resolved = false)
     {
         var a = await AccessAsync();
-        var query = ApplyScope(Visible(a), scope);
+        var query = ApplyScope(Visible(a), scope, a.Mine).Where(c => c.Resolved == resolved);
         if (!string.IsNullOrWhiteSpace(q))
         {
             var t = q.Trim().ToLower();
@@ -95,7 +119,7 @@ public class WhatsAppController : AppController
         {
             id = c.Id, name = (string.IsNullOrWhiteSpace(c.ContactName) ? c.Phone : c.ContactName), phone = c.Phone, initial = Initial((string.IsNullOrWhiteSpace(c.ContactName) ? c.Phone : c.ContactName)),
             pic = c.PictureUrl, preview = c.LastMessagePreview, time = ShortTime(c.LastMessageAt), unread = c.UnreadCount,
-            seller = c.SellerId.HasValue ? sellerNames.GetValueOrDefault(c.SellerId.Value) : null
+            seller = (c.SellerId ?? c.AssignedSellerId) is { } sid ? sellerNames.GetValueOrDefault(sid) : null
         }));
     }
 
@@ -113,16 +137,18 @@ public class WhatsAppController : AppController
         var a = await AccessAsync();
         var conv = await Visible(a).FirstOrDefaultAsync(c => c.Id == id);
         if (conv == null) return NotFound();
-        if (conv.UnreadCount > 0) { conv.UnreadCount = 0; await _db.SaveChangesAsync(); }
+        if (conv.UnreadCount > 0 && (conv.SellerId != null || conv.AssignedSellerId != null || a.All)) { conv.UnreadCount = 0; await _db.SaveChangesAsync(); }
         if (after == 0) await _wa.EnsurePictureAsync(conv.Id);
         var lead = conv.LeadId.HasValue ? await _db.Leads.Where(l => l.Id == conv.LeadId).Select(l => new { l.Status, l.CompanyName, l.City, l.State }).FirstOrDefaultAsync() : null;
         var msgs = await _db.WhatsAppMessages.Where(m => m.ConversationId == id && m.Id > after).OrderBy(m => m.Id).Take(500).ToListAsync();
-        string? sellerName = conv.SellerId.HasValue ? await _db.Sellers.Where(s => s.Id == conv.SellerId).Select(s => s.Name).FirstOrDefaultAsync() : null;
+        var ownerId = conv.SellerId ?? conv.AssignedSellerId;
+        string? sellerName = ownerId.HasValue ? await _db.Sellers.Where(s => s.Id == ownerId).Select(s => s.Name).FirstOrDefaultAsync() : null;
         var canSend = conv.SellerId == null ? _evo.IsConfigured
             : await _db.Sellers.AnyAsync(s => s.Id == conv.SellerId && s.WaStatus == "CONECTADO");
+        var central = conv.SellerId == null;
         return Json(new
         {
-            conversation = new { id = conv.Id, name = conv.ContactName ?? conv.Phone, phone = conv.Phone, leadId = conv.LeadId, customerId = conv.CustomerId, seller = sellerName, canSend, pic = conv.PictureUrl, leadStatus = lead?.Status.ToString(), leadInfo = lead == null ? null : string.Join(" · ", new[] { lead.CompanyName, lead.City == null ? null : lead.City + (lead.State == null ? "" : "/" + lead.State) }.Where(x => !string.IsNullOrWhiteSpace(x))), statuses = Enum.GetNames<LeadStatus>(), canEditLead = _perms.Has(Perm.CrmEdit), canDelete = _perms.Has(Perm.WhatsAppAll) },
+            conversation = new { id = conv.Id, name = conv.ContactName ?? conv.Phone, phone = conv.Phone, leadId = conv.LeadId, customerId = conv.CustomerId, seller = sellerName, central, assignedId = conv.AssignedSellerId, resolved = conv.Resolved, canClaim = central && conv.AssignedSellerId == null && a.Mine.HasValue, canRelease = central && conv.AssignedSellerId != null && (a.All || conv.AssignedSellerId == a.Mine), canAssign = central && a.All, canSend, pic = conv.PictureUrl, leadStatus = lead?.Status.ToString(), leadInfo = lead == null ? null : string.Join(" · ", new[] { lead.CompanyName, lead.City == null ? null : lead.City + (lead.State == null ? "" : "/" + lead.State) }.Where(x => !string.IsNullOrWhiteSpace(x))), statuses = Enum.GetNames<LeadStatus>(), canEditLead = _perms.Has(Perm.CrmEdit), canDelete = _perms.Has(Perm.WhatsAppAll) },
             messages = msgs.Select(m => new
             {
                 id = m.Id, dir = m.Direction == MessageDirection.In ? "in" : "out", body = m.Body, type = m.Type, status = m.Status,
@@ -143,7 +169,7 @@ public class WhatsAppController : AppController
         {
             if (conv.SellerId.HasValue && !a.All && conv.LeadId.HasValue) await _wa.ClaimLeadAsync(conv.LeadId.Value, conv.SellerId.Value, false);
             if (conv.SellerId.HasValue) await _wa.SendSellerTextAsync(conv.SellerId.Value, conv.Phone, req.Text.Trim(), UserId);
-            else await _wa.SendTextAsync(conv.Phone, req.Text.Trim(), UserId);
+            else await _wa.SendTextAsync(conv.Phone, await CentralSignatureAsync(conv, a) + req.Text.Trim(), UserId);
             return Json(new { ok = true });
         }
         catch (Exception ex) when (ex is NotConfiguredException or IntegrationException or InvalidOperationException)
@@ -168,7 +194,7 @@ public class WhatsAppController : AppController
         {
             if (conv.SellerId.HasValue && !a.All && conv.LeadId.HasValue) await _wa.ClaimLeadAsync(conv.LeadId.Value, conv.SellerId.Value, false);
             if (conv.SellerId.HasValue) await _wa.SendSellerMediaAsync(conv.SellerId.Value, conv.Phone, ms.ToArray(), name, mime, caption, UserId);
-            else await _wa.SendDocumentAsync(conv.Phone, ms.ToArray(), name, caption ?? "", UserId);
+            else await _wa.SendDocumentAsync(conv.Phone, ms.ToArray(), name, await CentralSignatureAsync(conv, a) + (caption ?? ""), UserId, default, mime);
             return Json(new { ok = true });
         }
         catch (Exception ex) when (ex is NotConfiguredException or IntegrationException or InvalidOperationException)
@@ -181,17 +207,17 @@ public class WhatsAppController : AppController
     public async Task<IActionResult> NewChat([FromBody] WaNewChatRequest req)
     {
         var a = await AccessAsync();
-        int? sellerId = req.Scope > 0 ? req.Scope : null;
-        if (!a.All && sellerId != a.Mine) return Forbid();
         if (PhoneUtil.Normalize(req.Phone ?? "") is null) return BadRequest(new { error = "Telefone inválido." });
         string phone;
         try
         {
-            phone = await _wa.ValidateNumberAsync(sellerId, req.Phone!);
-            if (sellerId.HasValue) await _wa.ClaimByPhoneAsync(phone, sellerId.Value, a.All);
+            phone = await _wa.ValidateNumberAsync(null, req.Phone!);
+            if (a.Mine.HasValue) await _wa.ClaimByPhoneAsync(phone, a.Mine.Value, a.All);
         }
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
-        var conv = await _wa.GetOrCreateConversationAsync(phone, req.Name, sellerId);
+        var conv = await _wa.GetOrCreateConversationAsync(phone, req.Name, null);
+        if (a.Mine.HasValue && conv.AssignedSellerId == null) { conv.AssignedSellerId = a.Mine; await _db.SaveChangesAsync(); }
+        else if (!a.All && conv.AssignedSellerId != a.Mine && conv.AssignedSellerId != null) return BadRequest(new { error = "Este contato já está sendo atendido por outro vendedor." });
         return Json(new { id = conv.Id });
     }
 
@@ -207,9 +233,11 @@ public class WhatsAppController : AppController
         var phone = lead.WhatsApp ?? lead.Phone;
         if (PhoneUtil.Normalize(phone) is null) { FlashFail("Lead sem telefone/WhatsApp."); return RedirectToAction("Details", "Leads", new { id }); }
         string valid;
-        try { valid = await _wa.ValidateNumberAsync(sid, phone!); await _wa.ClaimLeadAsync(id, sid.Value, a.All); }
+        try { valid = await _wa.ValidateNumberAsync(null, phone!); await _wa.ClaimLeadAsync(id, sid.Value, a.All); }
         catch (InvalidOperationException ex) { FlashWarn(ex.Message); return RedirectToAction("Details", "Leads", new { id }); }
-        var conv = await _wa.GetOrCreateConversationAsync(valid, lead.Name, sid);
+        var conv = await _wa.GetOrCreateConversationAsync(valid, lead.Name, null);
+        if (conv.AssignedSellerId != null && conv.AssignedSellerId != sid && !a.All) { FlashWarn("Este contato já está sendo atendido por outro vendedor."); return RedirectToAction("Details", "Leads", new { id }); }
+        conv.AssignedSellerId ??= sid;
         if (conv.LeadId != id) conv.LeadId = id;
         if (lead.Status == LeadStatus.Novo)
         {
@@ -217,7 +245,7 @@ public class WhatsAppController : AppController
             _db.Interactions.Add(new Interaction { LeadId = lead.Id, Type = InteractionType.Sistema, Description = "Status alterado para Contato (conversa iniciada no WhatsApp)", UserId = UserId });
         }
         await _db.SaveChangesAsync();
-        return RedirectToAction(nameof(Index), new { scope = sid.ToString(), id = conv.Id });
+        return RedirectToAction(nameof(Index), new { scope = a.Mine.HasValue ? "mine" : "all", id = conv.Id });
     }
 
     [HttpPost, RequirePermission(Perm.WhatsAppSend)]
@@ -249,6 +277,38 @@ public class WhatsAppController : AppController
         return Json(new { ok = true });
     }
 
+    /// <summary>Assume (vendedor: qualquer sellerId informado = ele mesmo), devolve à fila (dono/admin) ou transfere (admin). sellerId vazio = fila.</summary>
+    [HttpPost, RequirePermission(Perm.WhatsAppSend)]
+    public async Task<IActionResult> Assign(int id, int? sellerId)
+    {
+        var a = await AccessAsync();
+        var conv = await Visible(a).FirstOrDefaultAsync(c => c.Id == id);
+        if (conv == null || conv.SellerId != null) return NotFound();
+        var target = a.All ? sellerId : (sellerId.HasValue ? a.Mine : null);
+        if (target.HasValue && !await _db.Sellers.AnyAsync(s => s.Id == target && s.IsActive)) return BadRequest(new { error = "Vendedor inválido." });
+        if (!a.All)
+        {
+            if (target.HasValue && conv.AssignedSellerId != null) return BadRequest(new { error = "Conversa já atribuída." });
+            if (!target.HasValue && conv.AssignedSellerId != a.Mine) return Forbid();
+        }
+        conv.AssignedSellerId = target;
+        if (target.HasValue && conv.LeadId.HasValue) await _wa.ClaimLeadAsync(conv.LeadId.Value, target.Value, a.All);
+        await _db.SaveChangesAsync();
+        return Json(new { ok = true });
+    }
+
+    [HttpPost, RequirePermission(Perm.WhatsAppSend)]
+    public async Task<IActionResult> Resolve(int id, bool resolved)
+    {
+        var a = await AccessAsync();
+        var conv = await Visible(a).FirstOrDefaultAsync(c => c.Id == id);
+        if (conv == null) return NotFound();
+        if (!a.All && conv.SellerId == null && conv.AssignedSellerId != a.Mine) return Forbid();
+        conv.Resolved = resolved;
+        await _db.SaveChangesAsync();
+        return Json(new { ok = true });
+    }
+
     [HttpPost, RequirePermission(Perm.CrmEdit)]
     public async Task<IActionResult> SetLeadStatus(int id, string status)
     {
@@ -272,7 +332,8 @@ public class WhatsAppController : AppController
         var a = await AccessAsync();
         var c = await Visible(a).FirstOrDefaultAsync(x => x.Id == conv);
         if (c == null) return NotFound();
-        var rows = await _db.WhatsAppTemplates.Where(t => t.SellerId == null || t.SellerId == c.SellerId).OrderBy(t => t.Name).ToListAsync();
+        var tplOwner = a.All ? c.SellerId ?? c.AssignedSellerId : a.Mine;
+        var rows = await _db.WhatsAppTemplates.Where(t => t.SellerId == null || t.SellerId == tplOwner).OrderBy(t => t.Name).ToListAsync();
         return Json(rows.Select(t => new { id = t.Id, name = t.Name, body = t.Body, shared = t.SellerId == null, editable = t.SellerId == null ? a.All : (a.All || t.SellerId == a.Mine) }));
     }
 
@@ -281,7 +342,7 @@ public class WhatsAppController : AppController
     {
         var a = await AccessAsync();
         if (string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrWhiteSpace(req.Body)) return BadRequest(new { error = "Informe nome e texto." });
-        int? convSeller = req.Conv > 0 ? await Visible(a).Where(c => c.Id == req.Conv).Select(c => c.SellerId).FirstOrDefaultAsync() : null;
+        int? convSeller = req.Conv > 0 ? await Visible(a).Where(c => c.Id == req.Conv).Select(c => c.SellerId ?? c.AssignedSellerId).FirstOrDefaultAsync() : null;
         int? owner = req.Shared && a.All ? null : (a.All ? convSeller : a.Mine);
         if (!(req.Shared && a.All) && owner is null && !a.All) return BadRequest(new { error = "Seu usuário não está vinculado a um vendedor." });
         WhatsAppTemplate? t = req.Id > 0 ? await _db.WhatsAppTemplates.FindAsync(req.Id) : new WhatsAppTemplate();

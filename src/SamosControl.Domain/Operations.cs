@@ -43,6 +43,10 @@ public class WhatsAppConversation : BaseEntity
     public int UnreadCount { get; set; }
     /// <summary>null = the company number; otherwise the seller whose own WhatsApp holds this chat.</summary>
     public int? SellerId { get; set; }
+    /// <summary>Caixa de entrada central: vendedor responsável pela conversa no número da empresa (null = fila não atribuída).</summary>
+    public int? AssignedSellerId { get; set; }
+    /// <summary>Conversa resolvida; uma nova mensagem do cliente reabre.</summary>
+    public bool Resolved { get; set; }
     [MaxLength(200)] public string? LastMessagePreview { get; set; }
     [MaxLength(600)] public string? PictureUrl { get; set; }
     public DateTime? PictureCheckedAt { get; set; }

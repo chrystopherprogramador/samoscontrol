@@ -292,5 +292,14 @@ public class ChargesController : AppController
         catch (Exception ex) when (ex is IntegrationException or InvalidOperationException) { FlashFail("Falha no envio: " + ex.Message); }
         return RedirectToAction(nameof(Details), new { id });
     }
+
+    [HttpPost, RequirePermission(Perm.WhatsAppSend)]
+    public async Task<IActionResult> SendEmail(int id)
+    {
+        try { await HttpContext.RequestServices.GetRequiredService<ChargeNoticeService>().SendManualAsync(id, ChargeNoticeService.Email); Flash("Cobrança enviada por e-mail."); }
+        catch (NotConfiguredException) { FlashWarn("E-mail (SMTP) não configurado."); }
+        catch (Exception ex) when (ex is IntegrationException or InvalidOperationException) { FlashFail("Falha no envio: " + ex.Message); }
+        return RedirectToAction(nameof(Details), new { id });
+    }
 }
 

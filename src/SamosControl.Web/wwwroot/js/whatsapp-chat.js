@@ -1,6 +1,6 @@
 (function () {
   var wa = document.getElementById('wa'); if (!wa) return;
-  var scope = wa.dataset.scope, canSend = wa.dataset.canSend === 'true';
+  var scope = wa.dataset.scope, canSend = wa.dataset.canSend === 'true', showResolved = false;
   var $ = function (id) { return document.getElementById(id); };
   var csrf = (document.querySelector('meta[name=csrf]') || {}).content;
   var current = parseInt(wa.dataset.current || '0', 10) || 0, lastId = 0, lastDay = null, canSendConv = true;
@@ -24,7 +24,7 @@
 
   function loadList() {
     var q = search.value.trim();
-    return getJson('/WhatsApp/List?scope=' + encodeURIComponent(scope) + '&q=' + encodeURIComponent(q)).then(function (rows) {
+    return getJson('/WhatsApp/List?scope=' + encodeURIComponent(scope) + '&resolved=' + showResolved + '&q=' + encodeURIComponent(q)).then(function (rows) {
       if (!rows.length) { convsEl.innerHTML = '<div class="p-3 text-muted small">Nenhuma conversa.</div>'; return; }
       convsEl.innerHTML = rows.map(function (c) {
         return '<div class="wa-conv' + (c.id === current ? ' active' : '') + '" data-id="' + c.id + '">' +
@@ -32,7 +32,7 @@
           '<div class="wa-conv-body"><div class="d-flex justify-content-between"><span class="fw-semibold text-truncate">' + esc(c.name) + '</span><small class="text-muted ms-2">' + esc(c.time) + '</small></div>' +
           '<div class="d-flex justify-content-between"><small class="text-muted text-truncate">' + esc(c.preview || c.phone) + '</small>' +
           (c.unread > 0 ? '<span class="badge bg-success rounded-pill ms-2">' + c.unread + '</span>' : '') + '</div>' +
-          (c.seller && wa.dataset.all === 'true' && scope === 'all' ? '<small class="wa-tag">' + esc(c.seller) + '</small>' : '') + '</div></div>';
+          (c.seller && scope !== 'mine' ? '<small class="wa-tag"><i class="bi bi-person"></i> ' + esc(c.seller) + '</small>' : (!c.seller ? '<small class="wa-tag">Sem dono</small>' : '')) + '</div></div>';
       }).join('');
     }).catch(function () { });
   }
@@ -66,7 +66,11 @@
       var li = $('waLeadInfo'); li.textContent = c.leadInfo || ''; li.classList.toggle('d-none', !c.leadInfo);
       $('waDelete').classList.toggle('d-none', !c.canDelete);
       $('waHeadName').textContent = c.name;
-      $('waHeadSub').textContent = '+' + c.phone + (c.seller ? ' · WhatsApp de ' + c.seller : '');
+      $('waHeadSub').textContent = '+' + c.phone + (c.seller ? (c.central ? ' · Atendente: ' : ' · WhatsApp de ') + c.seller : (c.central ? ' · Sem atendente' : '')) + (c.resolved ? ' · Resolvida' : '');
+      var as = $('waAssign'); as.classList.toggle('d-none', !c.canAssign); if (c.canAssign && document.activeElement !== as) as.value = c.assignedId || '';
+      $('waClaim').classList.toggle('d-none', !c.canClaim);
+      $('waRelease').classList.toggle('d-none', !c.canRelease || c.canAssign);
+      var rs = $('waResolve'); rs.classList.toggle('d-none', !c.central || !canSend); rs.innerHTML = c.resolved ? '<i class="bi bi-arrow-counterclockwise"></i> Reabrir' : '<i class="bi bi-check2-circle"></i> Resolver';
       var links = '';
       if (c.leadId) links += '<a class="btn btn-sm btn-outline-secondary me-1" href="/Leads/Details/' + c.leadId + '">Lead</a>';
       if (c.customerId) links += '<a class="btn btn-sm btn-outline-secondary" href="/Customers/Details/' + c.customerId + '">Cliente</a>';
@@ -121,6 +125,13 @@
   }
 
   $('waHeadStatus').addEventListener('change', function () { var s = this.value; post('/WhatsApp/SetLeadStatus?id=' + current + '&status=' + encodeURIComponent(s)).catch(function (e) { alert(e.message); }); });
+  function refreshAll() { lastId = 0; lastDay = null; msgsEl.innerHTML = ''; loadMessages(true); loadList(); }
+  $('waClaim').addEventListener('click', function () { post('/WhatsApp/Assign?id=' + current + '&sellerId=0').then(refreshAll).catch(function (e) { alert(e.message); }); });
+  $('waRelease').addEventListener('click', function () { post('/WhatsApp/Assign?id=' + current).then(function () { if (scope === 'mine') { current = 0; $('waChat').classList.add('d-none'); $('waEmpty').classList.remove('d-none'); wa.classList.remove('chat-open'); loadList(); } else refreshAll(); }).catch(function (e) { alert(e.message); }); });
+  $('waAssign').addEventListener('change', function () { post('/WhatsApp/Assign?id=' + current + (this.value ? '&sellerId=' + this.value : '')).then(refreshAll).catch(function (e) { alert(e.message); }); });
+  $('waResolve').addEventListener('click', function () { var r = !(curConv && curConv.resolved); post('/WhatsApp/Resolve?id=' + current + '&resolved=' + r).then(function () { if (r) { current = 0; $('waChat').classList.add('d-none'); $('waEmpty').classList.remove('d-none'); wa.classList.remove('chat-open'); loadList(); } else refreshAll(); }).catch(function (e) { alert(e.message); }); });
+  var st = $('waState'); if (st) st.addEventListener('change', function () { showResolved = this.value === 'resolved'; loadList(); });
+  var sf = $('waSellerFilter'); if (sf) sf.addEventListener('change', function () { location.href = '?scope=' + (this.value || 'all'); });
   $('waDelete').addEventListener('click', function () {
     if (!current || !confirm('Apagar esta conversa e todas as mensagens? Isso não pode ser desfeito.')) return;
     post('/WhatsApp/DeleteConversation?id=' + current).then(function () { current = 0; msgsEl.innerHTML = ''; $('waChat').classList.add('d-none'); $('waEmpty').classList.remove('d-none'); wa.classList.remove('chat-open'); history.replaceState(null, '', '?scope=' + encodeURIComponent(scope)); loadList(); }).catch(function (e) { alert(e.message); });

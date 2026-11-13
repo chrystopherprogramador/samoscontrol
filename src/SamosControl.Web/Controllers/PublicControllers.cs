@@ -39,6 +39,44 @@ public class WebhooksController : ControllerBase
     }
 }
 
+[AllowAnonymous, IgnoreAntiforgeryToken, EnableRateLimiting("webhook")]
+[Route("api/integracao/axis")]
+public class AxisIntegrationController : ControllerBase
+{
+    private readonly AxisBridgeService _axis;
+    public AxisIntegrationController(AxisBridgeService axis) => _axis = axis;
+
+    private bool Autorizado()
+    {
+        var auth = Request.Headers.Authorization.ToString();
+        return _axis.TokenValido(auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? auth[7..].Trim() : null);
+    }
+
+    /// <summary>Duplicatas vencidas do cliente; o Axis bloqueia a renovação da licença quando há alguma.</summary>
+    [HttpGet("situacao")]
+    public async Task<IActionResult> Situacao(string? documento, CancellationToken ct)
+    {
+        if (!Autorizado()) return Unauthorized();
+        var s = await _axis.SituacaoAsync(documento ?? "", ct);
+        return Ok(new
+        {
+            vencidas = s.Vencidas, valorVencido = s.ValorVencido,
+            cobrancas = s.Cobrancas.Select(c => new { tipo = c.Tipo, descricao = c.Descricao, valor = c.Valor, vencimento = c.Vencimento, link = c.Link })
+        });
+    }
+
+    public sealed record EfiWebhookReq(string? Txid);
+
+    /// <summary>O Axis recebe o webhook da Efí e repassa aqui o txid das cobranças que pertencem ao SamosControl.</summary>
+    [HttpPost("efi-webhook")]
+    public async Task<IActionResult> EfiWebhook([FromBody] EfiWebhookReq r, CancellationToken ct)
+    {
+        if (!Autorizado()) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(r.Txid)) return BadRequest();
+        return Ok(new { encontrada = await _axis.OnEfiWebhookAsync(r.Txid.Trim(), ct) });
+    }
+}
+
 [AllowAnonymous]
 [Route("sign")]
 public class SignController : Controller

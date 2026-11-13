@@ -92,8 +92,15 @@ public class SettingsService : ISettingsReader
         }
     }
 
-    /// <summary>Database value wins; environment variable (same key) is the fallback.</summary>
+    /// <summary>Axis (when configured) wins for the Efí keys; otherwise database value wins and the environment variable (same key) is the fallback.</summary>
     public string? Get(string key)
+    {
+        if (RemoteEfiKeys.TryGetValue(key, out var field) && AxisEfi() is { } axis)
+            return axis.TryGetValue(field, out var v) && !string.IsNullOrWhiteSpace(v) ? v : null;
+        return GetLocal(key);
+    }
+
+    private string? GetLocal(string key)
     {
         if (Snapshot().TryGetValue(key, out var s) && !string.IsNullOrEmpty(s.Value))
         {
@@ -104,8 +111,54 @@ public class SettingsService : ISettingsReader
         return string.IsNullOrWhiteSpace(env) ? null : env;
     }
 
+    private static readonly Dictionary<string, string> RemoteEfiKeys = new()
+    {
+        [SettingKeys.EfiClientId] = "clientId", [SettingKeys.EfiClientSecret] = "clientSecret", [SettingKeys.EfiSandbox] = "sandbox",
+        [SettingKeys.EfiPixKey] = "chavePix", [SettingKeys.EfiCertBase64] = "certificadoBase64", [SettingKeys.EfiCertPassword] = "certificadoSenha",
+        [SettingKeys.EfiCertPath] = "-"
+    };
+    private static readonly HttpClient AxisHttp = new() { Timeout = TimeSpan.FromSeconds(8) };
+    private readonly object _axisLock = new();
+    private Dictionary<string, string>? _axis;
+    private DateTime _axisAt = DateTime.MinValue;
+
+    /// <summary>Efí configuration published by the Axis Deployer; the last good copy is kept if Axis is unreachable.</summary>
+    private Dictionary<string, string>? AxisEfi()
+    {
+        var url = GetLocal(SettingKeys.AxisEfiUrl);
+        var token = GetLocal(SettingKeys.AxisEfiToken);
+        if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(token)) return null;
+        lock (_axisLock)
+        {
+            var ttl = _axis is null ? 20 : 60;
+            if ((DateTime.UtcNow - _axisAt).TotalSeconds < ttl) return _axis;
+            _axisAt = DateTime.UtcNow;
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, url.Trim());
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Trim());
+                using var res = AxisHttp.Send(req);
+                if (!res.IsSuccessStatusCode) return _axis;
+                using var doc = System.Text.Json.JsonDocument.Parse(res.Content.ReadAsStream());
+                var map = new Dictionary<string, string>();
+                foreach (var p in doc.RootElement.EnumerateObject())
+                    map[p.Name] = p.Value.ValueKind switch
+                    {
+                        System.Text.Json.JsonValueKind.True => "true",
+                        System.Text.Json.JsonValueKind.False => "false",
+                        System.Text.Json.JsonValueKind.String => p.Value.GetString() ?? "",
+                        _ => ""
+                    };
+                _axis = map;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException) { }
+            return _axis;
+        }
+    }
+
     public string Source(string key) =>
-        Snapshot().TryGetValue(key, out var s) && !string.IsNullOrEmpty(s.Value) ? "painel"
+        RemoteEfiKeys.ContainsKey(key) && AxisEfi() is not null ? "axis"
+        : Snapshot().TryGetValue(key, out var s) && !string.IsNullOrEmpty(s.Value) ? "painel"
         : !string.IsNullOrWhiteSpace(_cfg[key]) ? "ambiente" : "-";
 
     public bool Has(string key) => !string.IsNullOrWhiteSpace(Get(key));

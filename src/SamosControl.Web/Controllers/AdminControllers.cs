@@ -231,6 +231,8 @@ public static class SettingCatalog
         }),
         new("efi", "Efí Bank", "bi-bank", new SettingField[]
         {
+            new(SettingKeys.AxisEfiUrl, "URL da configuração no Axis", false, "Ex.: https://comercial.websamos.com.br/api/integracao/samos/efi-config. Quando preenchida junto com o token, as credenciais e o certificado abaixo são lidos do Axis (Deployer) e os campos locais ficam só como reserva."),
+            new(SettingKeys.AxisEfiToken, "Token do Axis", true, "Gerado no Deployer em Configurar pagamentos > SamosControl."),
             new(SettingKeys.EfiClientId, "Client_Id"), new(SettingKeys.EfiClientSecret, "Client_Secret", true),
             new(SettingKeys.EfiSandbox, "Homologação (sandbox)?", false, "true para homologação; vazio ou false para produção."),
             new(SettingKeys.EfiPixKey, "Chave Pix", false, "Chave Pix da conta Efí que recebe (obrigatória para cobranças Pix)."),
@@ -289,6 +291,19 @@ public static class SettingCatalog
         {
             new(SettingKeys.SmtpHost, "SMTP host"), new(SettingKeys.SmtpPort, "SMTP porta"), new(SettingKeys.SmtpUser, "SMTP usuário"),
             new(SettingKeys.SmtpPassword, "SMTP senha", true), new(SettingKeys.SmtpFrom, "Remetente")
+        }),
+        new("cobranca", "Cobrança automática", "bi-bell", new SettingField[]
+        {
+            new(SettingKeys.NoticeEnabled, "Ativar avisos automáticos (true/false)", false, "Padrão: false. Envia lembretes das cobranças em aberto ao cliente."),
+            new(SettingKeys.NoticeChannels, "Canais", false, "whatsapp, email ou ambos separados por vírgula (padrão: whatsapp,email)."),
+            new(SettingKeys.NoticeDaysBefore, "Dias antes do vencimento", false, "Ex.: 3,1 (padrão: 3)."),
+            new(SettingKeys.NoticeOnDue, "Avisar no dia do vencimento (true/false)", false, "Padrão: true."),
+            new(SettingKeys.NoticeDaysAfter, "Dias após o vencimento", false, "Ex.: 1,3,7,15 (padrão: 1,5,10)."),
+            new(SettingKeys.NoticeHour, "Hora mínima de envio (0-23)", false, "Padrão: 9."),
+            new(SettingKeys.NoticeEmailSubject, "Assunto do e-mail", false, "Padrão: Cobrança de {valor} - vencimento {vencimento}"),
+            new(SettingKeys.NoticeMsgBefore, "Mensagem: antes do vencimento", false, "Variáveis: {nome} {valor} {vencimento} {descricao} {link} {pix} {dias}. Vazio = padrão.", true),
+            new(SettingKeys.NoticeMsgDue, "Mensagem: no vencimento", false, "Mesmas variáveis. Vazio = padrão.", true),
+            new(SettingKeys.NoticeMsgAfter, "Mensagem: em atraso", false, "Mesmas variáveis. Vazio = padrão.", true)
         }),
         new("seguranca", "Segurança", "bi-shield-check", new SettingField[]
         {
