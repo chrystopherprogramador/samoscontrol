@@ -11,7 +11,7 @@ using SamosControl.Integrations;
 
 namespace SamosControl.Application;
 
-public record Intent(string? Tool, JsonObject Args, string? Reply, bool Final = false);
+public record Intent(string? Tool, JsonObject Args, string? Reply);
 
 /// <summary>
 /// Natural-language agent. The LLM (or the rule-based fallback) only selects a predefined tool and its arguments;
@@ -159,8 +159,6 @@ public class SamosAgent
             if (final) return results.Count > 0 ? string.Join("\n\n", results) + "\n\n" + text : text;
             results.Add(text);
             if (!useLlm) return text;
-            // O próprio modelo marca "final":true quando esta é a última ferramenta e o resultado já está pronto para o usuário: poupa uma chamada de IA.
-            if (intent.Final && !ctx.Spoken) return string.Join("\n\n", results);
             chat.Add(new AiChatMessage("assistant", raw!));
             chat.Add(new AiChatMessage("user", ctx.Spoken
                 ? $"RESULTADO da ferramenta {intent.Tool}:\n{text}\n\nAgora responda em {{\"reply\":\"...\"}}, em português, como FALA numa conversa: no máximo 3 frases curtas, sem listas, tabelas, links, ids ou markdown. Preserve exatamente os valores e números importantes; se o resultado for longo, diga o resumo e ofereça mandar os detalhes por mensagem. Se faltar executar outra ferramenta para concluir o pedido, chame-a."
@@ -311,7 +309,7 @@ public class SamosAgent
         if (personal.Length > 0) sb.Append(personal);
         sb.AppendLine($"Agora: {now:yyyy-MM-ddTHH:mm} ({now:dddd}, America/Sao_Paulo). Interprete 'hoje', 'amanhã', 'sexta', 'daqui 2 horas', etc. a partir desta data e sempre envie datas no formato yyyy-MM-ddTHH:mm (horário local). Se o usuário não disser hora para um compromisso, use 09:00.");
         sb.AppendLine("Responda SOMENTE com UM JSON por vez:");
-        sb.AppendLine("- Para executar algo: {\"tool\":\"nome\",\"args\":{...}}. Se for a ÚLTIMA ferramenta necessária e o resultado dela já responde ao pedido (consultas, listas, registros simples), acrescente \"final\":true para o resultado ir direto ao usuário, sem você reescrevê-lo; em pedidos com várias partes ou que exijam análise do resultado, omita.");
+        sb.AppendLine("- Para executar algo: {\"tool\":\"nome\",\"args\":{...}}");
         sb.AppendLine("- Para responder/conversar/perguntar algo que falta: {\"reply\":\"texto\"}");
         sb.AppendLine("Regras: (1) Para QUALQUER dado da empresa ou da vida pessoal do usuário (tarefas, notas, gastos, agenda) use ferramenta; nunca invente números, ids ou dados. (2) Lembretes, compromissos, contas a pagar e coisas a fazer do usuário => criar_tarefa (não use criar_job). (3) Use o histórico da conversa para entender referências como 'essa', 'adia pra amanhã', 'e a de ontem?'. (4) Se faltar uma informação indispensável (ex.: o valor de um gasto), pergunte em {\"reply\"}. (5) Pedidos com várias partes: execute uma ferramenta por vez. (6) Ações sensíveis pedem confirmação automaticamente; não peça você mesmo. (7) Quando o usuário disser algo duradouro sobre si (preferência, família, rotina, nome de pessoas, 'a partir de agora...'), guarde com lembrar_fato. (8) Cumprimentos, agradecimentos e conversa comum => {\"reply\"} curto e humano, sem listar suas funções. (9) Pedidos como 'me liga às 11h55 para lembrar de X' => agendar_ligacao (ligação futura que você mesma executa no horário, sem o usuário precisar escrever de novo); isso é diferente de lembrete por WhatsApp (criar_tarefa). Para ligar agora use ligar_para_mim. Nunca diga que não consegue ligar ou fazer algo no futuro sem antes verificar suas ferramentas, e só confirme um agendamento depois que a ferramenta retornar sucesso.");
         sb.AppendLine("Exemplos: 'me lembra de ligar pro João amanhã 10h' => {\"tool\":\"criar_tarefa\",\"args\":{\"titulo\":\"Ligar pro João\",\"quando\":\"<amanhã>T10:00\"}}; 'gastei 45 no mercado' => {\"tool\":\"registrar_gasto\",\"args\":{\"valor\":45,\"descricao\":\"mercado\",\"categoria\":\"mercado\"}}; 'valeu!' => {\"reply\":\"Por nada! 😉\"}.");
@@ -330,7 +328,7 @@ public class SamosAgent
         var n = JsonNode.Parse(raw[start..(end + 1)]) as JsonObject;
         if (n == null) return null;
         var tool = (n["tool"] as JsonValue)?.ToString();
-        if (!string.IsNullOrWhiteSpace(tool)) return new Intent(tool, n["args"] as JsonObject ?? new JsonObject(), null, n["final"] is JsonValue f && f.TryGetValue<bool>(out var b) && b);
+        if (!string.IsNullOrWhiteSpace(tool)) return new Intent(tool, n["args"] as JsonObject ?? new JsonObject(), null);
         var reply = (n["reply"] as JsonValue)?.ToString();
         return reply != null ? new Intent(null, new JsonObject(), reply) : null;
     }
