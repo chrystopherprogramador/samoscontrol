@@ -294,7 +294,14 @@ public class WhatsAppService
             if (!await perms.HasAsync(user.Id, Perm.AiUse)) return;
             var agent = scope.ServiceProvider.GetRequiredService<SamosAgent>();
             var wa = scope.ServiceProvider.GetRequiredService<WhatsAppService>();
-            var reply = await agent.HandleAsync(text, new AgentContext(user.Id, user.Name, "WHATSAPP", PhoneUtil.Normalize(phone), Spoken: viaAudio && wa.VoiceAvailable));
+            var work = agent.HandleAsync(text, new AgentContext(user.Id, user.Name, "WHATSAPP", PhoneUtil.Normalize(phone), Spoken: viaAudio && wa.VoiceAvailable));
+            // Sem resposta em poucos segundos, avisa que está trabalhando para o usuário não ficar no vácuo.
+            if (await Task.WhenAny(work, Task.Delay(TimeSpan.FromSeconds(7))) != work)
+            {
+                string[] acks = { "Recebi! Tô cuidando disso, já te respondo. ⏳", "Pode deixar, tô nisso agora. Já volto com a resposta.", "Entendi, deixa eu resolver aqui. Um instante. ⏳", "Tô processando seu pedido, só mais um pouquinho." };
+                try { await wa.SendReplyAsync(null, phone, acks[Random.Shared.Next(acks.Length)], false, user.Id, fromAgent: true); } catch (Exception ex) { _log.LogWarning(ex, "Falha ao enviar aviso de andamento"); }
+            }
+            var reply = await work;
             await wa.SendReplyAsync(null, phone, reply, viaAudio, user.Id, fromAgent: true);
         }
         catch (Exception ex) { _log.LogError(ex, "Falha ao responder via agente no WhatsApp"); }
