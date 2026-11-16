@@ -124,6 +124,10 @@ public class SamosAgent
         }
         var results = new List<string>();
         string? lastCall = null;
+        var llmFailed = false;
+        string Fallback() => llmFailed
+            ? "Minha IA está lenta ou fora do ar agora e não consegui entender seu pedido. Tente de novo em instantes. Comandos simples (tarefas, gastos, cobranças, leads) continuam funcionando."
+            : HelpText(allowed);
         for (var step = 0; step < 4; step++)
         {
             Intent? intent = null;
@@ -138,14 +142,14 @@ public class SamosAgent
                     if (intent == null && !string.IsNullOrWhiteSpace(raw) && !raw.Contains('{') && !raw.Contains('}'))
                         intent = new Intent(null, new JsonObject(), raw.Trim());
                 }
-                catch (Exception ex) when (ex is IntegrationException or JsonException) { _log.LogWarning("LLM indisponível: {Msg}", ex.Message); }
+                catch (Exception ex) when (ex is IntegrationException or JsonException) { llmFailed = true; _log.LogWarning("LLM indisponível: {Msg}", ex.Message); }
                 if (intent == null && step > 0) break;
                 if (intent == null) { useLlm = false; }
             }
             if (!useLlm && step == 0) intent = RuleBasedInterpreter.Interpret(message);
             if (intent == null) break;
             if (intent.Tool == null)
-                return intent.Reply ?? (results.Count > 0 ? string.Join("\n\n", results) : HelpText(allowed));
+                return intent.Reply ?? (results.Count > 0 ? string.Join("\n\n", results) : Fallback());
 
             var call = intent.Tool + intent.Args.ToJsonString();
             if (call == lastCall) break; // o modelo repetiu a mesma chamada: encerra com o que já temos
@@ -160,7 +164,7 @@ public class SamosAgent
                 ? $"RESULTADO da ferramenta {intent.Tool}:\n{text}\n\nAgora responda em {{\"reply\":\"...\"}}, em português, como FALA numa conversa: no máximo 3 frases curtas, sem listas, tabelas, links, ids ou markdown. Preserve exatamente os valores e números importantes; se o resultado for longo, diga o resumo e ofereça mandar os detalhes por mensagem. Se faltar executar outra ferramenta para concluir o pedido, chame-a."
                 : $"RESULTADO da ferramenta {intent.Tool}:\n{text}\n\nAgora responda ao usuário em {{\"reply\":\"...\"}}, em português, de forma natural e curta, mantendo TODOS os números, ids (#) e itens do resultado (não resuma listas). Se faltar executar outra ferramenta para concluir o pedido, chame-a."));
         }
-        return results.Count > 0 ? string.Join("\n\n", results) : HelpText(allowed);
+        return results.Count > 0 ? string.Join("\n\n", results) : Fallback();
     }
 
     /// <summary>Valida, planeja e executa uma ferramenta. final = true quando a resposta deve ir direto ao usuário (erro, negado ou pedido de confirmação).</summary>

@@ -121,6 +121,26 @@ public class AgentTests
         Assert.Contains("•", await agent.HandleAsync("ajuda", ctx));
     }
 
+    private sealed class DownAi : SamosControl.Integrations.IAiProvider
+    {
+        public string Name => "down"; public bool IsConfigured => true;
+        public Task<List<string>> ListModelsAsync(CancellationToken ct = default) => Task.FromResult(new List<string>());
+        public Task<string> ChatAsync(IEnumerable<SamosControl.Integrations.AiChatMessage> messages, bool jsonMode, CancellationToken ct = default) => throw new SamosControl.Integrations.IntegrationException("fora do ar");
+    }
+
+    [Fact]
+    public async Task LlmDown_SaysSo_InsteadOfClaimingNotUnderstood_AndRulesStillWork()
+    {
+        using var h = new TestHost(AsaasCfg, s => s.AddSingleton<SamosControl.Integrations.IAiProvider>(new DownAi())); using var sc = h.Scope();
+        var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
+        var u = await SeedAsync(db, Perm.AiUse);
+        var agent = sc.ServiceProvider.GetRequiredService<SamosAgent>();
+        var ctx = new AgentContext(u.Id, "Op", "WHATSAPP", null);
+        Assert.Contains("lenta ou fora do ar", await agent.HandleAsync("blablabla xyz", ctx));
+        await agent.HandleAsync("gastei 12 no café", ctx);
+        Assert.Single(await db.PersonalExpenses.ToListAsync());
+    }
+
     [Fact]
     public async Task PersonalExpense_IsRecorded_ViaAgent()
     {
