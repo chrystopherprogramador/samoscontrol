@@ -18,6 +18,8 @@ public class OpenClawProvider : IAiProvider
     private string? Url => _s.Get(SettingKeys.OpenClawUrl) is { } u && !string.IsNullOrWhiteSpace(u) ? u.Trim().TrimEnd('/') : null;
     private string? Token => _s.Get(SettingKeys.OpenClawToken) is { } t && !string.IsNullOrWhiteSpace(t) ? t.Trim() : null;
     public string? Model => _s.Get(SettingKeys.OpenClawModel) is { } m && !string.IsNullOrWhiteSpace(m) ? m.Trim() : null;
+    // Agente dedicado e enxuto do OpenClaw (padrão "samos"); o "main" fica para o Telegram/Roberta.
+    private string AgentTarget => _s.Get(SettingKeys.OpenClawAgent) is { } a && !string.IsNullOrWhiteSpace(a) ? "openclaw/" + a.Trim() : "openclaw/samos";
     private int TimeoutSeconds => int.TryParse(_s.Get(SettingKeys.OpenClawTimeout), out var n) && n is >= 5 and <= 300 ? n : 90;
     public bool IsConfigured => Url != null && Token != null;
 
@@ -38,7 +40,7 @@ public class OpenClawProvider : IAiProvider
         if (jsonMode) system += "\n\nResponda SOMENTE com um documento JSON válido, sem texto fora dele.";
         var body = new JsonObject
         {
-            ["model"] = "openclaw/default",
+            ["model"] = AgentTarget,
             ["instructions"] = system,
             ["input"] = new JsonArray(list.Where(m => m.Role != "system").Select(m => (JsonNode)new JsonObject
             {

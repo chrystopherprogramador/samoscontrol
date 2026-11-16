@@ -42,6 +42,7 @@ public static class DependencyInjection
         s.AddMemoryCache();
         s.AddHttpClient();
         s.AddHttpClient("monitor");
+        s.AddHttpClient("openclaw", c => c.Timeout = Timeout.InfiniteTimeSpan);
         s.AddHttpClient("elevenlabs");
         s.AddHttpClient("elevenlabs-stream");
         s.AddHttpClient("evogo-calls");

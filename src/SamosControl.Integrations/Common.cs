@@ -84,6 +84,7 @@ public static class SettingKeys
     public const string OpenClawToken = "OPENCLAW_TOKEN";
     public const string OpenClawModel = "ROBERTA_MODEL";
     public const string OpenClawTimeout = "ROBERTA_TIMEOUT_SECONDS";
+    public const string OpenClawAgent = "OPENCLAW_AGENT";
     public const string RobertaFallbackOllama = "ROBERTA_FALLBACK_OLLAMA"; // true (padrão)
     // Voz (ElevenLabs): IA fala e entende áudios
     public const string ElevenLabsKey = "ELEVENLABS_API_KEY";
