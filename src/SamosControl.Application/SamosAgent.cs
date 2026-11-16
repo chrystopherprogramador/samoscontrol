@@ -111,6 +111,8 @@ public class SamosAgent
         var allowed = new List<IAgentTool>();
         foreach (var t in _tools) if (ctx.UserId.HasValue && await _perms.HasAsync(ctx.UserId.Value, t.Permission)) allowed.Add(t);
 
+        if (AsksForHelp(message)) return FullHelp(allowed);
+
         // Sem LLM: um único passo por regras. Com LLM: conversa com memória e até 4 passos (ferramenta -> resultado -> resposta).
         var useLlm = _ai.IsConfigured;
         var chat = new List<AiChatMessage>();
@@ -170,7 +172,7 @@ public class SamosAgent
         {
             action.Status = AiActionStatus.Negada; action.Result = "Ferramenta inexistente.";
             await SaveActionAsync(action, ctx);
-            return ("Não sei executar isso. " + HelpText(allowed), true);
+            return (HelpText(allowed), true);
         }
         if (!allowed.Contains(tool))
         {
@@ -259,7 +261,24 @@ public class SamosAgent
             await _audit.LogAsync("ai", action.Tool, "AiAction", action.Id, newData: $"{action.Status}; {action.ArgsJson}", userId: ctx.UserId, userName: ctx.UserName);
     }
 
+    private static readonly string[] NotUnderstood =
+    {
+        "Hum, não peguei bem o que você quis dizer. Pode me explicar de outro jeito?",
+        "Não entendi direito. Me conta de novo com outras palavras?",
+        "Fiquei na dúvida aqui. O que você precisa exatamente?"
+    };
+
+    // A lista de funções só aparece quando o usuário pede ajuda explicitamente.
     private static string HelpText(IEnumerable<IAgentTool> tools) =>
+        NotUnderstood[Random.Shared.Next(NotUnderstood.Length)] + " (Se quiser ver tudo o que sei fazer, mande \"ajuda\".)";
+
+    private static bool AsksForHelp(string message)
+    {
+        var t = RuleBasedInterpreter.Fold(message).Trim().TrimEnd('.', '!', '?');
+        return t is "ajuda" or "help" or "menu" or "comandos" or "o que voce faz" or "o que voce sabe fazer" or "o que voce pode fazer" or "como te uso" or "como usar";
+    }
+
+    private static string FullHelp(IEnumerable<IAgentTool> tools) =>
         "Posso ajudar com:\n" + string.Join("\n", tools.Select(t => $"• {t.Description}"));
 
     // ---------- Interpretation ----------

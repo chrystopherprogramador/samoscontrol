@@ -109,6 +109,19 @@ public class AgentTests
     }
 
     [Fact]
+    public async Task NotUnderstood_DoesNotDumpToolList_ButHelpDoes()
+    {
+        using var h = new TestHost(AsaasCfg); using var sc = h.Scope();
+        var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
+        var u = await SeedAsync(db, Perm.AiUse);
+        var agent = sc.ServiceProvider.GetRequiredService<SamosAgent>();
+        var ctx = new AgentContext(u.Id, "Op", "WHATSAPP", null);
+        var r = await agent.HandleAsync("blablabla xyz", ctx);
+        Assert.DoesNotContain("•", r);
+        Assert.Contains("•", await agent.HandleAsync("ajuda", ctx));
+    }
+
+    [Fact]
     public async Task PersonalExpense_IsRecorded_ViaAgent()
     {
         using var h = new TestHost(AsaasCfg); using var sc = h.Scope();
