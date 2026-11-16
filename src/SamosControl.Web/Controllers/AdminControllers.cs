@@ -243,7 +243,7 @@ public static class SettingCatalog
             new(SettingKeys.OpenClawUrl, "URL do OpenClaw (rede interna)", false, "Ex.: http://192.168.48.1:18789 (nunca exponha publicamente)."),
             new(SettingKeys.OpenClawToken, "Token do OpenClaw", true, "OPENCLAW_GATEWAY_TOKEN do gateway (/opt/roberta-ai/.env no servidor)."),
             new(SettingKeys.OpenClawModel, "Modelo (ex.: github-copilot/claude-sonnet-5.5)", false, "Vazio = padrão do gateway. Catálogo real: 'openclaw models list --provider github-copilot' no servidor."),
-            new(SettingKeys.OpenClawTimeout, "Timeout do OpenClaw (segundos, padrão 90)"),
+            new(SettingKeys.OpenClawTimeout, "Timeout do OpenClaw (segundos; vazio ou 0 = sem limite)"),
             new(SettingKeys.RobertaFallbackOllama, "Cair para o Ollama se o OpenClaw falhar (true/false)", false, "Padrão true."),
             new(SettingKeys.OllamaApiKey, "Token do Ollama Cloud (API key)", true, "Crie em https://ollama.com/settings/keys. É só o que falta preencher."),
             new(SettingKeys.OllamaModel, "Modelo do assistente (padrão: beam)", false, "beam = gratuito no Ollama Cloud, com ferramentas e raciocínio. Interpreta os comandos do Assistente."),

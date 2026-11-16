@@ -20,7 +20,8 @@ public class OpenClawProvider : IAiProvider
     public string? Model => _s.Get(SettingKeys.OpenClawModel) is { } m && !string.IsNullOrWhiteSpace(m) ? m.Trim() : null;
     // Agente dedicado e enxuto do OpenClaw (padrão "samos"); o "main" fica para o Telegram/Roberta.
     private string AgentTarget => _s.Get(SettingKeys.OpenClawAgent) is { } a && !string.IsNullOrWhiteSpace(a) ? "openclaw/" + a.Trim() : "openclaw/samos";
-    private int TimeoutSeconds => int.TryParse(_s.Get(SettingKeys.OpenClawTimeout), out var n) && n is >= 5 and <= 300 ? n : 90;
+    // Sem limite por padrão: tarefas longas (exec, SSH) não podem ser cortadas. Só limita se ROBERTA_TIMEOUT_SECONDS > 0.
+    private int TimeoutSeconds => int.TryParse(_s.Get(SettingKeys.OpenClawTimeout), out var n) && n > 0 ? n : 0;
     public bool IsConfigured => Url != null && Token != null;
 
     /// <summary>O gateway só publica alvos de agente via HTTP; o catálogo de modelos do Copilot vem do CLI do gateway.</summary>
@@ -79,7 +80,7 @@ public class OpenClawProvider : IAiProvider
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TimeSpan.FromSeconds(TimeoutSeconds));
+            if (TimeoutSeconds > 0) cts.CancelAfter(TimeSpan.FromSeconds(TimeoutSeconds));
             var res = await _http.CreateClient("openclaw").SendAsync(req, cts.Token);
             if (res.IsSuccessStatusCode) return res;
             var status = (int)res.StatusCode;
