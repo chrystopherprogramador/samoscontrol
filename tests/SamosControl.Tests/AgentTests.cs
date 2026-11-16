@@ -109,6 +109,20 @@ public class AgentTests
     }
 
     [Fact]
+    public async Task FinalTool_SkipsSecondLlmCall()
+    {
+        var ai = new ScriptedAi();
+        ai.Replies.Enqueue("{\"tool\":\"registrar_gasto\",\"args\":{\"valor\":30,\"descricao\":\"padaria\"},\"final\":true}");
+        using var h = new TestHost(AsaasCfg, s => s.AddSingleton<SamosControl.Integrations.IAiProvider>(ai)); using var sc = h.Scope();
+        var db = sc.ServiceProvider.GetRequiredService<AppDbContext>();
+        var u = await SeedAsync(db, Perm.AiUse);
+        var reply = await sc.ServiceProvider.GetRequiredService<SamosAgent>().HandleAsync("gastei 30 na padaria", new AgentContext(u.Id, "Op", "WHATSAPP", null));
+        Assert.Single(ai.Systems);
+        Assert.Single(await db.PersonalExpenses.ToListAsync());
+        Assert.False(string.IsNullOrWhiteSpace(reply));
+    }
+
+    [Fact]
     public async Task NotUnderstood_DoesNotDumpToolList_ButHelpDoes()
     {
         using var h = new TestHost(AsaasCfg); using var sc = h.Scope();
