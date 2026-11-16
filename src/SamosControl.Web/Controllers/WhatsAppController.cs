@@ -35,14 +35,26 @@ public class WhatsAppController : AppController
     {
         var all = _perms.Has(Perm.WhatsAppAll);
         int? mine = all ? null : await _db.Sellers.Where(s => s.UserId == UserId).Select(s => (int?)s.Id).FirstOrDefaultAsync();
+        // Conversas de usuários do sistema com a assistente (SamosAgent) são privadas: só quem vê tudo as enxerga.
+        if (!all)
+            _agentPhones = (await _db.Users.Where(u => u.Phone != null).Select(u => u.Phone!).ToListAsync())
+                .Select(p => PhoneUtil.Normalize(p)).Where(p => p is { Length: >= 8 }).Select(p => p![^8..]).Distinct().ToList();
         return (all, mine);
+    }
+
+    private List<string> _agentPhones = new();
+
+    private IQueryable<WhatsAppConversation> HideAgentChats(IQueryable<WhatsAppConversation> q)
+    {
+        foreach (var p in _agentPhones) { var k = p; q = q.Where(c => !c.Phone.EndsWith(k)); }
+        return q;
     }
 
     // Caixa central (estilo Chatwoot): o vendedor vê as conversas atribuídas a ele e a fila não atribuída; nunca as de outro vendedor.
     private IQueryable<WhatsAppConversation> Visible((bool All, int? Mine) a) =>
         a.All ? _db.WhatsAppConversations
-        : a.Mine.HasValue ? _db.WhatsAppConversations.Where(c => c.SellerId == a.Mine || (c.SellerId == null && (c.AssignedSellerId == null || c.AssignedSellerId == a.Mine)))
-        : _db.WhatsAppConversations.Where(c => c.SellerId == null);
+        : HideAgentChats(a.Mine.HasValue ? _db.WhatsAppConversations.Where(c => c.SellerId == a.Mine || (c.SellerId == null && (c.AssignedSellerId == null || c.AssignedSellerId == a.Mine)))
+        : _db.WhatsAppConversations.Where(c => c.SellerId == null));
 
     /// <summary>scope: "mine" | "unassigned" | "all" | id do vendedor (atribuídas a ele).</summary>
     private static IQueryable<WhatsAppConversation> ApplyScope(IQueryable<WhatsAppConversation> q, string? scope, int? mine) =>
