@@ -1,0 +1,29 @@
+/* Samos Control no visual do Axis: complementos ao axis-site.css + axis-premium.css */
+.axis-side-brand { color: #fff; font-weight: 700; letter-spacing: .02em; font-size: 1.05rem; }
+.axis-side-brand .axis-side-logo { background: var(--ax-brand); }
+.axis-side-brand .axis-side-wordmark { color: #fff; font-size: 1.05rem; font-weight: 700; letter-spacing: .04em; }
+.axis-side-brand .axis-side-sub { color: var(--ax-rail-ink-2); }
+.axis-side-title {
+    padding: 14px 10px 4px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ax-rail-ink-2);
+}
+.axis-side-item .badge { margin-left: auto; }
+.axis-shell.sidebar-collapsed .axis-side-title { display: none; }
+.axis-topbar-title { font-size: 1.05rem; font-weight: 650; letter-spacing: -.01em; margin: 0; color: var(--ax-ink); white-space: nowrap; }
+.axis-topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.axis-topbar-icon { position: relative; background: transparent; border: 0; color: var(--ax-ink-2); font-size: 1.1rem; padding: 4px 8px; border-radius: 6px; }
+.axis-topbar-icon:hover { background: var(--ax-surface-2); color: var(--ax-brand); }
+.axis-topbar-icon .badge { position: absolute; top: -2px; right: -2px; font-size: .6rem; }
+.axis-user-trigger.dropdown-toggle::after { display: none; }
+.axis-app .wa { height: calc(100vh - 150px); }
+
+/* Telas sem menu (login, assinatura, verificação) */
+body.axis-app.axis-bare { height: auto; min-height: 100vh; overflow: auto; display: block; }
+.axis-bare-wrap { margin: 0 auto; padding: 56px 16px; }
+.axis-bare-brand { text-align: center; margin-bottom: 24px; font-size: 1.6rem; font-weight: 700; letter-spacing: .04em; color: var(--ax-ink); }
+.axis-bare-brand i { color: var(--ax-brand); }
+.axis-bare-brand span { font-weight: 300; }

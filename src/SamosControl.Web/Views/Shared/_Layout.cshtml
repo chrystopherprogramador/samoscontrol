@@ -11,103 +11,117 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>@Title · SAMOS CONTROL</title>
     <meta name="csrf" content="@Antiforgery.GetAndStoreTokens(Context).RequestToken" />
-    <script src="~/js/theme.js"></script>
     <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/lib/icons/bootstrap-icons.min.css" />
+    <link rel="stylesheet" href="~/css/axis-site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/axis-premium.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/samos-axis.css" asp-append-version="true" />
 </head>
-<body>
-<div class="app">
-    <aside class="sidebar" id="sidebar">
-        <a class="brand" href="/"><i class="bi bi-hexagon-fill"></i> SAMOS <span>CONTROL</span></a>
-        <nav>
-            @if (Perms.Has(Perm.DashboardView)) { <a class="@Active("Home")" href="/"><i class="bi bi-speedometer2"></i> Dashboard</a> }
+<body class="axis-app">
+<div class="axis-shell">
+    <div class="axis-sidebar-overlay" id="axisSidebarOverlay"></div>
+    <aside class="axis-sidebar" id="sidebar">
+        <a class="axis-side-brand" href="/">
+            <span class="axis-side-logo"><i class="bi bi-hexagon-fill"></i></span>
+            <span class="axis-side-wordmark">SAMOS</span><span class="axis-side-sub">CONTROL</span>
+        </a>
+        <nav class="d-flex flex-column">
+            @if (Perms.Has(Perm.DashboardView)) { <a class="axis-side-item @Active("Home")" href="/"><i class="bi bi-speedometer2"></i> Dashboard</a> }
             @if (Perms.Has(Perm.CrmView))
             {
-                <div class="grp">CRM</div>
-                <a class="@Active("Leads")" asp-controller="Leads" asp-action="Index"><i class="bi bi-bullseye"></i> Leads</a>
-                <a class="@Active("Customers")" asp-controller="Customers" asp-action="Index"><i class="bi bi-people"></i> Clientes</a>
-                <a asp-controller="Leads" asp-action="Pipeline"><i class="bi bi-kanban"></i> Pipeline</a>
-                <a class="@Active("Map")" asp-controller="Map" asp-action="Index"><i class="bi bi-globe-americas"></i> Mapa de leads</a>
+                <div class="axis-side-title">CRM</div>
+                <a class="axis-side-item @Active("Leads")" asp-controller="Leads" asp-action="Index"><i class="bi bi-bullseye"></i> Leads</a>
+                <a class="axis-side-item @Active("Customers")" asp-controller="Customers" asp-action="Index"><i class="bi bi-people"></i> Clientes</a>
+                <a class="axis-side-item" asp-controller="Leads" asp-action="Pipeline"><i class="bi bi-kanban"></i> Pipeline</a>
+                <a class="axis-side-item @Active("Map")" asp-controller="Map" asp-action="Index"><i class="bi bi-globe-americas"></i> Mapa de leads</a>
             }
             @if (Perms.Has(Perm.ContractsView))
             {
-                <div class="grp">Contratos</div>
-                <a class="@Active("Contracts")" asp-controller="Contracts" asp-action="Index"><i class="bi bi-file-earmark-text"></i> Contratos</a>
-                <a class="@Active("Templates")" asp-controller="Templates" asp-action="Index"><i class="bi bi-file-earmark-code"></i> Modelos</a>
+                <div class="axis-side-title">Contratos</div>
+                <a class="axis-side-item @Active("Contracts")" asp-controller="Contracts" asp-action="Index"><i class="bi bi-file-earmark-text"></i> Contratos</a>
+                <a class="axis-side-item @Active("Templates")" asp-controller="Templates" asp-action="Index"><i class="bi bi-file-earmark-code"></i> Modelos</a>
             }
             @if (Perms.Has(Perm.SellersView))
             {
-                <div class="grp">Vendedores</div>
-                <a class="@Active("Sellers")" asp-controller="Sellers" asp-action="Index"><i class="bi bi-person-badge"></i> Vendedores</a>
-                <a class="@Active("Commissions")" asp-controller="Commissions" asp-action="Index"><i class="bi bi-cash-stack"></i> Comissões</a>
+                <div class="axis-side-title">Vendedores</div>
+                <a class="axis-side-item @Active("Sellers")" asp-controller="Sellers" asp-action="Index"><i class="bi bi-person-badge"></i> Vendedores</a>
+                <a class="axis-side-item @Active("Commissions")" asp-controller="Commissions" asp-action="Index"><i class="bi bi-cash-stack"></i> Comissões</a>
             }
             @if (Perms.Has(Perm.BillingView))
             {
-                <div class="grp">Financeiro</div>
-                <a class="@Active("Charges")" asp-controller="Charges" asp-action="Index"><i class="bi bi-cash-coin"></i> Cobranças</a>
+                <div class="axis-side-title">Financeiro</div>
+                <a class="axis-side-item @Active("Charges")" asp-controller="Charges" asp-action="Index"><i class="bi bi-cash-coin"></i> Cobranças</a>
             }
             @if (Perms.Has(Perm.WhatsAppView))
             {
-                <div class="grp">WhatsApp</div>
-                <a class="@Active("WhatsApp")" asp-controller="WhatsApp" asp-action="Index"><i class="bi bi-whatsapp"></i> Conversas <span class="badge bg-success rounded-pill ms-1 d-none" id="waNavBadge"></span></a>
+                <div class="axis-side-title">WhatsApp</div>
+                <a class="axis-side-item @Active("WhatsApp")" asp-controller="WhatsApp" asp-action="Index"><i class="bi bi-whatsapp"></i> Conversas <span class="badge bg-success rounded-pill ms-1 d-none" id="waNavBadge"></span></a>
             }
             @if (Perms.Has(Perm.VoiceView))
             {
-                <div class="grp">Voz</div>
-                <a class="@Active("Voice")" asp-controller="Voice" asp-action="Index"><i class="bi bi-telephone"></i> Ligações Roberta</a>
+                <div class="axis-side-title">Voz</div>
+                <a class="axis-side-item @Active("Voice")" asp-controller="Voice" asp-action="Index"><i class="bi bi-telephone"></i> Ligações Roberta</a>
             }
             @if (Perms.Has(Perm.AiUse))
             {
-                <div class="grp">IA</div>
-                <a asp-controller="Assistant" asp-action="Index"><i class="bi bi-robot"></i> Assistente</a>
-                @if (Perms.Has(Perm.AiHistory)) { <a asp-controller="Assistant" asp-action="History"><i class="bi bi-clock-history"></i> Histórico</a> }
+                <div class="axis-side-title">IA</div>
+                <a class="axis-side-item" asp-controller="Assistant" asp-action="Index"><i class="bi bi-robot"></i> Assistente</a>
+                @if (Perms.Has(Perm.AiHistory)) { <a class="axis-side-item" asp-controller="Assistant" asp-action="History"><i class="bi bi-clock-history"></i> Histórico</a> }
             }
             @if (Perms.Has(Perm.AutomationView))
             {
-                <div class="grp">Automações</div>
-                <a class="@Active("Automation")" asp-controller="Automation" asp-action="Index"><i class="bi bi-gear-wide-connected"></i> Automações</a>
+                <div class="axis-side-title">Automações</div>
+                <a class="axis-side-item @Active("Automation")" asp-controller="Automation" asp-action="Index"><i class="bi bi-gear-wide-connected"></i> Automações</a>
             }
             @if (Perms.Has(Perm.MonitoringView))
             {
-                <div class="grp">Monitoramento</div>
-                <a asp-controller="Monitoring" asp-action="Servers"><i class="bi bi-hdd-network"></i> Servidores</a>
-                <a asp-controller="Monitoring" asp-action="Services"><i class="bi bi-activity"></i> Serviços</a>
-                <a asp-controller="Monitoring" asp-action="Incidents"><i class="bi bi-exclamation-octagon"></i> Incidentes</a>
+                <div class="axis-side-title">Monitoramento</div>
+                <a class="axis-side-item" asp-controller="Monitoring" asp-action="Servers"><i class="bi bi-hdd-network"></i> Servidores</a>
+                <a class="axis-side-item" asp-controller="Monitoring" asp-action="Services"><i class="bi bi-activity"></i> Serviços</a>
+                <a class="axis-side-item" asp-controller="Monitoring" asp-action="Incidents"><i class="bi bi-exclamation-octagon"></i> Incidentes</a>
             }
             @if (Perms.Has(Perm.UsersManage) || Perms.Has(Perm.RolesManage) || Perms.Has(Perm.AuditView) || Perms.Has(Perm.SettingsManage))
             {
-                <div class="grp">Administração</div>
-                @if (Perms.Has(Perm.UsersManage)) { <a class="@Active("Users")" asp-controller="Users" asp-action="Index"><i class="bi bi-person-gear"></i> Usuários</a> }
-                @if (Perms.Has(Perm.RolesManage)) { <a class="@Active("Roles")" asp-controller="Roles" asp-action="Index"><i class="bi bi-shield-lock"></i> Perfis</a> }
-                @if (Perms.Has(Perm.AuditView)) { <a class="@Active("Audit")" asp-controller="Audit" asp-action="Index"><i class="bi bi-journal-check"></i> Auditoria</a> }
-                @if (Perms.Has(Perm.SettingsManage)) { <a class="@Active("Settings")" asp-controller="Settings" asp-action="Index"><i class="bi bi-sliders"></i> Configurações</a> }
+                <div class="axis-side-title">Administração</div>
+                @if (Perms.Has(Perm.UsersManage)) { <a class="axis-side-item @Active("Users")" asp-controller="Users" asp-action="Index"><i class="bi bi-person-gear"></i> Usuários</a> }
+                @if (Perms.Has(Perm.RolesManage)) { <a class="axis-side-item @Active("Roles")" asp-controller="Roles" asp-action="Index"><i class="bi bi-shield-lock"></i> Perfis</a> }
+                @if (Perms.Has(Perm.AuditView)) { <a class="axis-side-item @Active("Audit")" asp-controller="Audit" asp-action="Index"><i class="bi bi-journal-check"></i> Auditoria</a> }
+                @if (Perms.Has(Perm.SettingsManage)) { <a class="axis-side-item @Active("Settings")" asp-controller="Settings" asp-action="Index"><i class="bi bi-sliders"></i> Configurações</a> }
             }
         </nav>
     </aside>
-    <div class="main">
-        <header class="topbar">
-            <button class="btn btn-sm btn-outline-secondary d-lg-none" id="menuToggle" type="button"><i class="bi bi-list"></i></button>
-            <h1 class="h5 mb-0">@Title</h1>
-            <div class="ms-auto d-flex align-items-center gap-2">
-                <button class="btn btn-sm btn-outline-secondary" id="themeToggle" type="button" title="Alternar tema"><i class="bi bi-moon-stars"></i></button>
+    <div class="axis-content">
+        <header class="axis-topbar">
+            <button class="axis-topbar-menu" id="menuToggle" type="button" title="Menu"><i class="bi bi-list"></i></button>
+            <h1 class="axis-topbar-title">@Title</h1>
+            <div class="axis-topbar-actions">
                 <div class="dropdown">
-                    <button class="btn btn-sm btn-outline-secondary position-relative" data-bs-toggle="dropdown" id="notifBtn" type="button">
+                    <button class="axis-topbar-icon" data-bs-toggle="dropdown" id="notifBtn" type="button" title="Notificações">
                         <i class="bi bi-bell"></i><span class="badge bg-danger rounded-pill d-none" id="notifCount">0</span>
                     </button>
                     <div class="dropdown-menu dropdown-menu-end p-0" style="width:340px" id="notifMenu"><div class="p-3 text-muted small">Carregando...</div></div>
                 </div>
+                @{
+                    var nome = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
+                    var iniciais = string.Concat(nome.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(p => char.ToUpper(p[0])));
+                    if (iniciais.Length == 0) { iniciais = "?"; }
+                }
                 <div class="dropdown">
-                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown" type="button"><i class="bi bi-person-circle"></i> @User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value</button>
+                    <button class="axis-user-trigger dropdown-toggle" data-bs-toggle="dropdown" type="button">
+                        <span class="axis-user-avatar">@iniciais</span>
+                        <span class="axis-user-meta"><span class="axis-user-nome">@nome</span><span class="axis-user-empresa">Samos</span></span>
+                        <i class="bi bi-chevron-down axis-user-caret"></i>
+                    </button>
                     <div class="dropdown-menu dropdown-menu-end">
-                        <a class="dropdown-item" asp-controller="Account" asp-action="Password">Alterar senha</a>
-                        <a class="dropdown-item" asp-controller="Notifications" asp-action="Index">Notificações</a>
-                        <form asp-controller="Account" asp-action="Logout" method="post"><button class="dropdown-item" type="submit">Sair</button></form>
+                        <a class="dropdown-item" asp-controller="Account" asp-action="Password"><i class="bi bi-key me-2"></i>Alterar senha</a>
+                        <a class="dropdown-item" asp-controller="Notifications" asp-action="Index"><i class="bi bi-bell me-2"></i>Notificações</a>
+                        <form asp-controller="Account" asp-action="Logout" method="post"><button class="dropdown-item text-danger" type="submit"><i class="bi bi-box-arrow-right me-2"></i>Sair</button></form>
                     </div>
                 </div>
             </div>
         </header>
-        <main class="content">
+        <main class="axis-main">
             @if (flash is { Length: 2 }) { <div class="alert alert-@flash[0] alert-dismissible fade show">@flash[1]<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div> }
             @RenderBody()
         </main>

@@ -13,11 +13,14 @@
     <script src="~/js/theme.js"></script>
     <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/lib/icons/bootstrap-icons.min.css" />
+    <link rel="stylesheet" href="~/css/axis-site.css" />
+    <link rel="stylesheet" href="~/css/axis-premium.css" />
     <link rel="stylesheet" href="~/css/site.css" />
+    <link rel="stylesheet" href="~/css/samos-axis.css" />
 </head>
-<body class="bare">
-<div class="container py-5" style="max-width:@(ViewData["Width"] ?? "440px")">
-    <div class="text-center mb-4"><span class="brand fs-3"><i class="bi bi-hexagon-fill"></i> SAMOS <span>CONTROL</span></span></div>
+<body class="axis-app axis-bare bare">
+<div class="axis-bare-wrap" style="max-width:@(ViewData["Width"] ?? "440px")">
+    <div class="axis-bare-brand"><i class="bi bi-hexagon-fill"></i> SAMOS <span>CONTROL</span></div>
     @if (flash is { Length: 2 }) { <div class="alert alert-@flash[0]">@flash[1]</div> }
     @RenderBody()
 </div>

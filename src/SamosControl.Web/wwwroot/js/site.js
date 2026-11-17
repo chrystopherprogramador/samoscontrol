@@ -5,14 +5,17 @@
       .then(function (r) { return r.json(); });
   };
 
-  var root = document.documentElement;
-  var tt = document.getElementById('themeToggle');
-  if (tt) tt.addEventListener('click', function () {
-    var n = root.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
-    root.setAttribute('data-bs-theme', n); localStorage.setItem('samos-theme', n);
-  });
+  var shell = document.querySelector('.axis-shell');
   var mt = document.getElementById('menuToggle');
-  if (mt) mt.addEventListener('click', function () { document.getElementById('sidebar').classList.toggle('open'); });
+  var overlay = document.getElementById('axisSidebarOverlay');
+  var mobile = function () { return window.matchMedia('(max-width: 768px)').matches; };
+  if (shell && localStorage.getItem('samosSidebarCollapsed') === '1') shell.classList.add('sidebar-collapsed');
+  if (mt && shell) mt.addEventListener('click', function () {
+    if (mobile()) { shell.classList.toggle('sidebar-open'); return; }
+    shell.classList.toggle('sidebar-collapsed');
+    localStorage.setItem('samosSidebarCollapsed', shell.classList.contains('sidebar-collapsed') ? '1' : '0');
+  });
+  if (overlay && shell) overlay.addEventListener('click', function () { shell.classList.remove('sidebar-open'); });
 
   document.addEventListener('submit', function (e) {
     var m = e.target.getAttribute('data-confirm');

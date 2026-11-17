@@ -1,17 +1,6 @@
-:root { --sidebar-w: 248px; --brand: #4f46e5; }
-body { background: var(--bs-tertiary-bg); font-size: .92rem; }
-.app { display: flex; min-height: 100vh; }
-.sidebar { width: var(--sidebar-w); background: #111827; color: #cbd5e1; position: fixed; top: 0; bottom: 0; overflow-y: auto; z-index: 1030; transition: transform .2s; }
-.sidebar .brand { display: block; padding: 1.1rem 1.25rem; font-weight: 700; color: #fff; text-decoration: none; letter-spacing: .5px; }
+:root { --brand: #1f5eff; }
 .brand i { color: var(--brand); }
 .brand span { font-weight: 300; }
-.sidebar nav a { display: flex; align-items: center; gap: .6rem; padding: .5rem 1.25rem; color: #cbd5e1; text-decoration: none; }
-.sidebar nav a:hover, .sidebar nav a.active { background: rgba(255,255,255,.07); color: #fff; }
-.sidebar .grp { padding: .9rem 1.25rem .25rem; font-size: .68rem; text-transform: uppercase; letter-spacing: 1px; color: #64748b; }
-.main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
-.topbar { display: flex; align-items: center; gap: .75rem; padding: .7rem 1.5rem; background: var(--bs-body-bg); border-bottom: 1px solid var(--bs-border-color); position: sticky; top: 0; z-index: 1020; }
-.content { padding: 1.5rem; }
-.card { border: 1px solid var(--bs-border-color); box-shadow: 0 1px 2px rgba(0,0,0,.04); }
 .kpi { font-size: 1.7rem; font-weight: 700; line-height: 1.1; }
 .kpi-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .5px; color: var(--bs-secondary-color); }
 .table > :not(caption) > * > * { vertical-align: middle; }
@@ -72,11 +61,6 @@ pre.doc { white-space: pre-wrap; font-family: Georgia, serif; font-size: .95rem;
 }
 body.bare { background: var(--bs-tertiary-bg); }
 canvas { max-height: 280px; }
-@media (max-width: 991px) {
-  .sidebar { transform: translateX(-100%); }
-  .sidebar.open { transform: none; }
-  .main { margin-left: 0; }
-}
 
 /* WhatsApp: fotos, popups, info do lead */
 .wa-av { overflow: hidden; }
