@@ -62,7 +62,7 @@ public class AsaasIntegration : IAsaasIntegration
 
     private static object CustomerBody(AsaasCustomerRequest r) => new
     {
-        name = r.Name, cpfCnpj = r.CpfCnpj, email = r.Email, mobilePhone = r.Phone, externalReference = r.ExternalReference
+        name = r.Name, cpfCnpj = r.CpfCnpj, email = r.Email, mobilePhone = PhoneUtil.IsBrazilian(r.Phone) ? r.Phone : null, notificationDisabled = true, externalReference = r.ExternalReference
     };
 
     public async Task<string> CreateCustomerAsync(AsaasCustomerRequest r, CancellationToken ct = default)

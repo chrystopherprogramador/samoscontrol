@@ -25,9 +25,10 @@ public class ChargeNoticeService
     private readonly SettingsService _settings;
     private readonly WhatsAppService _wa;
     private readonly IEmailSender _email;
+    private readonly BillingService _billing;
 
-    public ChargeNoticeService(AppDbContext db, SettingsService settings, WhatsAppService wa, IEmailSender email)
-    { _db = db; _settings = settings; _wa = wa; _email = email; }
+    public ChargeNoticeService(AppDbContext db, SettingsService settings, WhatsAppService wa, IEmailSender email, BillingService billing)
+    { _db = db; _settings = settings; _wa = wa; _email = email; _billing = billing; }
 
     public sealed record Config(bool Enabled, HashSet<string> Channels, int[] Before, bool OnDue, int[] After, int Hour);
 
@@ -128,25 +129,48 @@ public class ChargeNoticeService
 
         var notice = await _db.ChargeNotices.FirstOrDefaultAsync(n => n.ChargeId == ch.Id && n.Rule == rule && n.Channel == channel, ct);
         if (notice is { Success: true } || notice is { Attempts: >= MaxAttempts }) return null;
-        if (notice is null) { notice = new ChargeNotice { ChargeId = ch.Id, Rule = rule, Channel = channel }; _db.ChargeNotices.Add(notice); }
 
+        // Never more than one automatic notice per charge and channel in 20h, whatever the rule (protects against rule/config changes and repeated runs).
+        var since = DateTime.UtcNow.AddHours(-20);
+        if (await _db.ChargeNotices.AnyAsync(n => n.ChargeId == ch.Id && n.Channel == channel && n.Success && n.SentAt > since, ct)) return null;
+        // A failed attempt is retried only after 1h, so a broken channel does not burn its 3 attempts within a single run.
+        if (notice is { Success: false } && notice.UpdatedAt > DateTime.UtcNow.AddHours(-1)) return null;
+
+        // The attempt is recorded BEFORE sending: if two runs overlap, the unique index lets only one proceed, and a crash after
+        // sending can never cause an unbounded resend.
+        if (notice is null) { notice = new ChargeNotice { ChargeId = ch.Id, Rule = rule, Channel = channel }; _db.ChargeNotices.Add(notice); }
         notice.Attempts++; notice.UpdatedAt = DateTime.UtcNow;
+        try { await _db.SaveChangesAsync(ct); }
+        catch (DbUpdateException) { _db.ChangeTracker.Clear(); return null; } // concurrent run already claimed this rule
+
         try
         {
             await DeliverAsync(ch, late, channel, to, ct);
             notice.Success = true; notice.SentAt = DateTime.UtcNow; notice.Error = null;
         }
-        catch (Exception ex) when (ex is IntegrationException or InvalidOperationException or HttpRequestException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             notice.Error = ex.Message.Truncate(500);
         }
-        try { await _db.SaveChangesAsync(ct); }
-        catch (DbUpdateException) { _db.ChangeTracker.Clear(); return null; } // concurrent run already recorded this rule
+        notice.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(CancellationToken.None);
         return notice.Success;
+    }
+
+    /// <summary>Charges created before the link was stored (or never refreshed) get it pulled from the provider; a notice without payment link is never sent.</summary>
+    private async Task EnsureLinkAsync(Charge ch, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(ch.InvoiceUrl))
+        {
+            try { await _billing.RefreshAsync(ch.Id, ct); }
+            catch (Exception ex) when (ex is IntegrationException or HttpRequestException) { }
+        }
+        if (string.IsNullOrWhiteSpace(ch.InvoiceUrl)) throw new InvalidOperationException("Cobrança sem link de pagamento (não foi possível obter no provedor).");
     }
 
     private async Task DeliverAsync(Charge ch, int late, string channel, string to, CancellationToken ct)
     {
+        await EnsureLinkAsync(ch, ct);
         var text = Render(ch, late);
         if (channel == WhatsApp)
         {

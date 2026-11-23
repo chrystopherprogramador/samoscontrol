@@ -190,17 +190,48 @@ internal static class Json
     }
 }
 
+public static class PixKeyUtil
+{
+    /// <summary>Formats a Pix key the way the bank expects: CPF/CNPJ digits only, phone as +55DDDNUMBER, e-mail lower-case.</summary>
+    public static string Normalize(string? type, string? key)
+    {
+        var k = (key ?? "").Trim();
+        var digits = new string(k.Where(char.IsDigit).ToArray());
+        type = type?.Trim().ToUpperInvariant();
+        if (string.IsNullOrEmpty(type))
+        {
+            if (k.Contains('@')) type = "EMAIL";
+            else if (System.Text.RegularExpressions.Regex.IsMatch(k, @"^\d{3}\.\d{3}\.\d{3}-\d{2}$")) type = "CPF";
+            else if (System.Text.RegularExpressions.Regex.IsMatch(k, @"^\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}$")) type = "CNPJ";
+            else if (k.StartsWith('+')) type = "PHONE";
+        }
+        return type switch
+        {
+            "CPF" or "CNPJ" => digits,
+            "EMAIL" => k.ToLowerInvariant(),
+            "PHONE" => k.StartsWith('+') ? "+" + digits : digits.Length is 10 or 11 ? "+55" + digits : "+" + digits,
+            _ => k
+        };
+    }
+}
+
 public static class PhoneUtil
 {
-    /// <summary>Digits only; adds Brazil country code (55) when it looks like a national number.</summary>
+    /// <summary>Digits only; adds Brazil country code (55) when it looks like a national number. Numbers typed with "+" or "00" are international and kept as is.</summary>
     public static string? Normalize(string? phone)
     {
         if (string.IsNullOrWhiteSpace(phone)) return null;
-        var d = new string(phone.Where(char.IsDigit).ToArray());
+        var t = phone.Trim();
+        var d = new string(t.Where(char.IsDigit).ToArray());
         if (d.Length < 8) return null;
+        if (t.StartsWith('+')) return d;
+        if (d.StartsWith("00") && d.Length > 10) return d[2..];
         if (d.Length is 10 or 11) d = "55" + d;
         return d;
     }
+
+    /// <summary>True when the number is Brazilian (explicit or implicit +55); billing providers only accept Brazilian phones.</summary>
+    public static bool IsBrazilian(string? phone) => Normalize(phone) is { } n && n.StartsWith("55") && n.Length is 12 or 13;
 
     /// <summary>Comparison key: area code + last 8 digits (ignores country code and the optional 9th digit).</summary>
     public static string? Key(string? phone)

@@ -100,9 +100,11 @@ public class CommissionService
         foreach (var c in await _db.Commissions.Include(x => x.Seller).Where(x => x.Status == CommissionStatus.Pendente).OrderBy(x => x.Id).Take(50).ToListAsync(ct))
         {
             if (string.IsNullOrWhiteSpace(c.PixKey ?? c.Seller?.PixKey)) { c.Error = "Vendedor sem chave Pix cadastrada."; await _db.SaveChangesAsync(ct); continue; }
-            c.PixKey = c.Seller?.PixKey ?? c.PixKey;
-            // The id is created once and reused on retries: Efí never debits twice for the same idEnvio.
-            c.PayoutId ??= $"samoscom{c.Id:D8}a{c.Attempts + 1}";
+            c.PixKey = PixKeyUtil.Normalize(c.Seller?.PixKeyType, c.Seller?.PixKey ?? c.PixKey);
+            // Retry keeps the old id: before sending again, check what the bank did with it so we never pay twice.
+            if (c.PayoutId != null && c.Attempts == 0 && await TryAdoptExistingAsync(c, ct)) { if (c.Status == CommissionStatus.Paga) paid++; continue; }
+            // The id is created once and reused on network retries (Efí never debits twice for the same idEnvio); a fresh one is only made after a confirmed failure.
+            c.PayoutId ??= NewPayoutId(c.Id);
             try
             {
                 c.Attempts++;
@@ -112,6 +114,7 @@ public class CommissionService
             }
             catch (Exception ex) when (ex is IntegrationException or ArgumentException)
             {
+                if (ex.Message.StartsWith("Efí 409") && await TryAdoptExistingAsync(c, ct)) { if (c.Status == CommissionStatus.Paga) paid++; continue; }
                 c.Error = ex.Message.Truncate(300);
                 // 4xx (except rate limit) needs a human; 5xx/network keeps the same idEnvio for a safe retry on the next run.
                 var permanent = ex is ArgumentException || (ex.Message.StartsWith("Efí 4") && !ex.Message.StartsWith("Efí 429")) || c.Attempts >= MaxAttempts;
@@ -135,7 +138,8 @@ public class CommissionService
                 await TellSellerAsync(c);
                 return true;
             case "NAO_REALIZADO":
-                c.Status = CommissionStatus.Erro; c.Error = "Pix não realizado pelo banco. Verifique a chave do vendedor e tente novamente.";
+                c.Status = CommissionStatus.Erro;
+                c.Error = ("Pix não realizado pelo banco" + (string.IsNullOrWhiteSpace(t.Reason) ? "" : $" ({t.Reason})") + $". Chave usada: {c.PixKey}. Verifique a chave do vendedor e o saldo da conta Efí e tente novamente.").Truncate(300);
                 break;
             default:
                 c.Status = CommissionStatus.EmProcessamento;
@@ -155,11 +159,30 @@ public class CommissionService
         await TellSellerAsync(c);
     }
 
+    private static string NewPayoutId(int id) => $"samoscom{id:D8}n{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+
+    /// <summary>Looks up the transfer already registered for the current idEnvio. Returns true when it was paid/in progress (state applied);
+    /// when it never existed or failed, clears PayoutId so the caller sends with a fresh id.</summary>
+    private async Task<bool> TryAdoptExistingAsync(Commission c, CancellationToken ct)
+    {
+        EfiPixTransfer? t = null;
+        try { t = await _efi.GetPixTransferAsync(c.PayoutId!, ct); }
+        catch (Exception ex) when (ex is IntegrationException or ArgumentException) { }
+        if (t != null && !string.IsNullOrEmpty(t.Status) && t.Status != "NAO_REALIZADO")
+        {
+            c.Error = null;
+            await ApplyTransferAsync(c, t, ct);
+            return true;
+        }
+        c.PayoutId = NewPayoutId(c.Id);
+        return false;
+    }
+
     public async Task RetryAsync(int id, CancellationToken ct = default)
     {
         var c = await _db.Commissions.FindAsync(new object[] { id }, ct) ?? throw new KeyNotFoundException();
         if (c.Status != CommissionStatus.Erro) throw new InvalidOperationException("Somente comissões com erro podem ser reenviadas.");
-        c.Status = CommissionStatus.Pendente; c.Error = null; c.Attempts = 0; c.PayoutId = null;
+        c.Status = CommissionStatus.Pendente; c.Error = null; c.Attempts = 0;
         await _db.SaveChangesAsync(ct);
     }
 
@@ -172,11 +195,38 @@ public class CommissionService
         await _audit.LogAsync("commissions", "cancel", "Commission", id);
     }
 
+    public async Task<(byte[] Pdf, string FileName)> ReceiptAsync(int id, CancellationToken ct = default)
+    {
+        var c = await _db.Commissions.Include(x => x.Seller).Include(x => x.Customer).FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new KeyNotFoundException();
+        if (c.Status != CommissionStatus.Paga) throw new InvalidOperationException("O comprovante só existe para comissões pagas.");
+        var pdf = CommissionReceiptPdf.Build(c, _settings.Get(SettingKeys.CompanyName) ?? "Samos", _settings.Get(SettingKeys.CompanyDocument));
+        return (pdf, $"comprovante-comissao-{c.Id}.pdf");
+    }
+
+    /// <summary>Sends the receipt (PDF) with the payment message to the seller's WhatsApp. Returns false when there is no phone or WhatsApp is off.</summary>
+    public async Task<bool> SendReceiptAsync(int id, CancellationToken ct = default)
+    {
+        var c = await _db.Commissions.Include(x => x.Seller).FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new KeyNotFoundException();
+        var phone = c.Seller?.Phone;
+        if (string.IsNullOrWhiteSpace(phone) || !_wa.IsConfigured) return false;
+        var (pdf, name) = await ReceiptAsync(id, ct);
+        var text = $"💰 Comissão paga: {ContractService.Money(c.Amount)} ({c.Kind.ToLowerInvariant()}, {c.Percent:0.##}% de {ContractService.Money(c.BaseAmount)}). Enviada para a sua chave Pix. Segue o comprovante.";
+        await _wa.SendDocumentAsync(phone, pdf, name, text, null, ct);
+        return true;
+    }
+
+    /// <summary>Puts every commission in Erro back in the queue (new payout id, attempts reset). Returns how many.</summary>
+    public async Task<int> RetryAllAsync(CancellationToken ct = default)
+    {
+        var list = await _db.Commissions.Where(x => x.Status == CommissionStatus.Erro).ToListAsync(ct);
+        foreach (var c in list) { c.Status = CommissionStatus.Pendente; c.Error = null; c.Attempts = 0; }
+        if (list.Count > 0) await _db.SaveChangesAsync(ct);
+        return list.Count;
+    }
+
     private async Task TellSellerAsync(Commission c)
     {
-        var phone = c.Seller?.Phone ?? (await _db.Sellers.Where(s => s.Id == c.SellerId).Select(s => s.Phone).FirstOrDefaultAsync());
-        if (string.IsNullOrWhiteSpace(phone) || !_wa.IsConfigured) return;
-        try { await _wa.SendTextAsync(phone, $"💰 Comissão paga: {ContractService.Money(c.Amount)} ({c.Kind.ToLowerInvariant()}, {c.Percent:0.##}% de {ContractService.Money(c.BaseAmount)}). Enviada para a sua chave Pix."); }
-        catch (Exception ex) when (ex is IntegrationException or ArgumentException) { /* best effort */ }
+        try { await SendReceiptAsync(c.Id); }
+        catch (Exception ex) when (ex is IntegrationException or ArgumentException or InvalidOperationException) { /* best effort */ }
     }
 }

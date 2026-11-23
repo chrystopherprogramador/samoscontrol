@@ -92,9 +92,11 @@ public class HomeController : AppController
     public HomeController(DashboardService dash) => _dash = dash;
     public async Task<IActionResult> Index() => View(await _dash.GetAsync());
 
-    [AllowAnonymous, ResponseCache(NoStore = true)]
+    // Re-executed by UseStatusCodePages keeping the original POST; without IgnoreAntiforgery a failed login POST
+    // (400/429) would fail validation again and return an empty body without Content-Type, which mobile browsers download as "index.html".
+    [AllowAnonymous, IgnoreAntiforgeryToken, ResponseCache(NoStore = true)]
     public IActionResult Error() => View("Status", 500);
-    [AllowAnonymous, ResponseCache(NoStore = true)]
+    [AllowAnonymous, IgnoreAntiforgeryToken, ResponseCache(NoStore = true)]
     public IActionResult Status(int code = 404) => View("Status", code);
 }
 

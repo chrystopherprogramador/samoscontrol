@@ -147,6 +147,30 @@ public class CommissionsController : AppController
     public async Task<IActionResult> Retry(int id) => await Act(() => _svc.RetryAsync(id), "Comissão recolocada na fila.");
 
     [HttpPost, RequirePermission(Perm.CommissionsPay)]
+    public async Task<IActionResult> RetryAll()
+    {
+        var n = await _svc.RetryAllAsync();
+        if (n == 0) { Flash("Nenhuma comissão com erro."); return RedirectToAction(nameof(Index)); }
+        var r = await _svc.ProcessAsync();
+        Flash($"{n} recolocada(s) na fila. Processado: {r.Paid} paga(s), {r.Failed} com erro.");
+        return RedirectToAction(nameof(Index));
+    }
+
+    public async Task<IActionResult> Receipt(int id)
+    {
+        try { var (pdf, name) = await _svc.ReceiptAsync(id); return File(pdf, "application/pdf", name); }
+        catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException) { FlashFail(ex.Message); return RedirectToAction(nameof(Index)); }
+    }
+
+    [HttpPost, RequirePermission(Perm.CommissionsPay)]
+    public async Task<IActionResult> SendReceipt(int id)
+    {
+        try { Flash(await _svc.SendReceiptAsync(id) ? "Comprovante enviado ao vendedor." : "Vendedor sem WhatsApp ou WhatsApp não configurado."); }
+        catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException or IntegrationException) { FlashFail(ex.Message); }
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost, RequirePermission(Perm.CommissionsPay)]
     public async Task<IActionResult> Cancel(int id) => await Act(() => _svc.CancelAsync(id), "Comissão cancelada.");
 
     private async Task<IActionResult> Act(Func<Task> a, string ok)

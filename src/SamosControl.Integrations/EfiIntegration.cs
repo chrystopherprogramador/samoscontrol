@@ -15,7 +15,7 @@ public record EfiDebtor(string Name, string Document, string? Email, string? Pho
 public record EfiCharge(string Id, string Status, string? Url, string? PixPayload, string? PixQrCodeBase64, decimal? PaidValue, DateTime? PaidAt, string? BarCode = null, string? PdfUrl = null);
 
 /// <summary>Outgoing Pix (commission payout). Status: EM_PROCESSAMENTO, REALIZADO or NAO_REALIZADO.</summary>
-public record EfiPixTransfer(string IdEnvio, string Status, string? E2eId);
+public record EfiPixTransfer(string IdEnvio, string Status, string? E2eId, string? Reason = null);
 
 public interface IEfiIntegration
 {
@@ -208,8 +208,7 @@ public class EfiIntegration : IEfiIntegration
         if (doc.Length == 11) customer["cpf"] = doc;
         else customer["juridical_person"] = new { corporate_name = d.Name.Truncate(255), cnpj = doc };
         if (!string.IsNullOrWhiteSpace(d.Email)) customer["email"] = d.Email.Trim();
-        var phone = PhoneUtil.Normalize(d.Phone);
-        if (phone is { Length: > 11 } && phone.StartsWith("55")) phone = phone[2..];
+        var phone = PhoneUtil.IsBrazilian(d.Phone) ? PhoneUtil.Normalize(d.Phone)![2..] : null;
         if (phone is { Length: 10 or 11 }) customer["phone_number"] = phone;
 
         var billet = new Dictionary<string, object?> { ["expire_at"] = due.ToString("yyyy-MM-dd"), ["customer"] = customer };
@@ -294,14 +293,16 @@ public class EfiIntegration : IEfiIntegration
             favorecido = new { chave = toKey.Trim() }
         };
         var n = await Send(true, HttpMethod.Put, $"/v3/gn/pix/{idEnvio}", body, ct);
-        return new EfiPixTransfer(Json.Str(n["idEnvio"]) ?? idEnvio, Json.Str(n["status"]) ?? "EM_PROCESSAMENTO", Json.Str(n["e2eId"]));
+        return new EfiPixTransfer(Json.Str(n["idEnvio"]) ?? idEnvio, Json.Str(n["status"]) ?? "EM_PROCESSAMENTO", Json.Str(n["e2eId"]),
+            Json.Str(n["rejeicao"]?["motivo"]) ?? Json.Str(n["motivo"]) ?? Json.Str(n["mensagem"]) ?? Json.Str(n["detail"]));
     }
 
     /// <summary>GET /v2/gn/pix/enviados/id-envio/{idEnvio} (scope gn.pix.send.read).</summary>
     public async Task<EfiPixTransfer> GetPixTransferAsync(string idEnvio, CancellationToken ct = default)
     {
         var n = await Send(true, HttpMethod.Get, $"/v2/gn/pix/enviados/id-envio/{Uri.EscapeDataString(idEnvio)}", null, ct);
-        return new EfiPixTransfer(Json.Str(n["idEnvio"]) ?? idEnvio, Json.Str(n["status"]) ?? "EM_PROCESSAMENTO", Json.Str(n["endToEndId"]) ?? Json.Str(n["e2eId"]));
+        return new EfiPixTransfer(Json.Str(n["idEnvio"]) ?? idEnvio, Json.Str(n["status"]) ?? "EM_PROCESSAMENTO", Json.Str(n["endToEndId"]) ?? Json.Str(n["e2eId"]),
+            Json.Str(n["rejeicao"]?["motivo"]) ?? Json.Str(n["motivo"]) ?? Json.Str(n["mensagem"]) ?? Json.Str(n["detail"]));
     }
 
     public static string MapPixStatus(string? s) => s switch

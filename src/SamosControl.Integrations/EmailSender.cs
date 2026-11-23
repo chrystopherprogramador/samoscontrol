@@ -34,7 +34,7 @@ public class SmtpEmailSender : IEmailSender
             msg.From.Add(MailboxAddress.Parse(FromAddress!));
             msg.To.Add(MailboxAddress.Parse(to));
         }
-        catch (ParseException ex) { throw new IntegrationException("EndereÃ§o de e-mail invÃ¡lido: " + ex.Message, ex); }
+        catch (ParseException ex) { throw new IntegrationException("Endereço de e-mail inválido: " + ex.Message, ex); }
         msg.Subject = subject;
         msg.Body = new TextPart("plain") { Text = body };
 
@@ -46,10 +46,10 @@ public class SmtpEmailSender : IEmailSender
             await client.SendAsync(new MailKit.SendRequest(msg), ct);
             await client.DisconnectAsync(true, ct);
         }
-        catch (Exception ex) when (ex is MailKit.ProtocolException or MailKit.ServiceNotConnectedException or MailKit.ServiceNotAuthenticatedException
-            or AuthenticationException or System.Net.Sockets.SocketException or IOException or TimeoutException or MailKit.CommandException)
+        catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
         {
-            throw new IntegrationException("Falha no envio de e-mail: " + ex.Message, ex);
+            // Includes TLS handshake/certificate errors and timeouts, which are not MailKit protocol exceptions.
+            throw new IntegrationException("Falha no envio de e-mail (" + host + ":" + port + "): " + ex.Message, ex);
         }
     }
 }
