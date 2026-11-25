@@ -161,6 +161,23 @@ public class SignForm
 }
 
 [AllowAnonymous]
+[Route("pay")]
+public class PayController : Controller
+{
+    private readonly PayLinkService _pay;
+    public PayController(PayLinkService pay) { _pay = pay; }
+
+    [HttpGet("{token}"), EnableRateLimiting("public")]
+    public async Task<IActionResult> Index(string token, CancellationToken ct)
+    {
+        var ch = await _pay.OpenAsync(token, ct);
+        if (ch == null) return NotFound();
+        Response.Headers.CacheControl = "no-store";
+        return View(ch);
+    }
+}
+
+[AllowAnonymous]
 [Route("verify")]
 public class VerifyController : Controller
 {

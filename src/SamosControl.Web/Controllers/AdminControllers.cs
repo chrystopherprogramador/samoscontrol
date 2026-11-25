@@ -300,6 +300,8 @@ public static class SettingCatalog
             new(SettingKeys.NoticeOnDue, "Avisar no dia do vencimento (true/false)", false, "Padrão: true."),
             new(SettingKeys.NoticeDaysAfter, "Dias após o vencimento", false, "Ex.: 1,3,7,15 (padrão: 1,5,10)."),
             new(SettingKeys.NoticeHour, "Hora mínima de envio (0-23)", false, "Padrão: 9."),
+            new(SettingKeys.NoticeHour2, "Segundo envio do dia (0-23)", false, "Hora do 2º aviso diário de cobranças vencidas/no vencimento. Padrão: 15."),
+            new(SettingKeys.NoticeDailyOverdue, "Repetir diariamente até pagar (true/false)", false, "Vencimento e atraso: 2 avisos por dia (nas horas acima) até a cobrança ser paga. Padrão: true."),
             new(SettingKeys.NoticeEmailSubject, "Assunto do e-mail", false, "Padrão: Cobrança de {valor} - vencimento {vencimento}"),
             new(SettingKeys.NoticeMsgBefore, "Mensagem: antes do vencimento", false, "Variáveis: {nome} {valor} {vencimento} {descricao} {link} {pix} {dias}. Vazio = padrão.", true),
             new(SettingKeys.NoticeMsgDue, "Mensagem: no vencimento", false, "Mesmas variáveis. Vazio = padrão.", true),

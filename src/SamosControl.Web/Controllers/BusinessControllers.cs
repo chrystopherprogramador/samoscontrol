@@ -301,7 +301,7 @@ public class ChargesController : AppController
     [HttpPost, RequirePermission(Perm.WhatsAppSend)]
     public async Task<IActionResult> SendWhatsApp(int id)
     {
-        try { await _wa.SendChargeLinkAsync(id, UserId); Flash("Cobrança enviada por WhatsApp."); }
+        try { await HttpContext.RequestServices.GetRequiredService<ChargeNoticeService>().SendManualAsync(id, ChargeNoticeService.WhatsApp); Flash("Cobrança enviada por WhatsApp."); }
         catch (NotConfiguredException) { FlashWarn("Evolution API não configurada."); }
         catch (Exception ex) when (ex is IntegrationException or InvalidOperationException) { FlashFail("Falha no envio: " + ex.Message); }
         return RedirectToAction(nameof(Details), new { id });

@@ -79,6 +79,8 @@ public static class DependencyInjection
         s.AddScoped<AxisBridgeService>();
         s.AddSingleton<IEmailSender, SmtpEmailSender>();
         s.AddScoped<ChargeNoticeService>();
+        s.AddSingleton<PayLinkSigner>();
+        s.AddScoped<PayLinkService>();
         s.AddScoped<WhatsAppService>();
         s.AddScoped<MonitoringService>();
         s.AddScoped<DashboardService>();

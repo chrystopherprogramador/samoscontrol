@@ -9,12 +9,23 @@ public class ChargeNoticeTests
     [Fact]
     public void Rules_FollowConfiguredSchedule()
     {
-        var cfg = new ChargeNoticeService.Config(true, new() { "EMAIL" }, ChargeNoticeService.Days("3, 1"), true, ChargeNoticeService.Days("2;7"), 9);
+        var cfg = new ChargeNoticeService.Config(true, new() { "EMAIL" }, ChargeNoticeService.Days("3, 1"), true, ChargeNoticeService.Days("2;7"), 9, 15, false);
         Assert.Equal("before:3", ChargeNoticeService.RuleFor(cfg, -3));
         Assert.Null(ChargeNoticeService.RuleFor(cfg, -2));
         Assert.Equal("due", ChargeNoticeService.RuleFor(cfg, 0));
         Assert.Equal("after:7", ChargeNoticeService.RuleFor(cfg, 7));
         Assert.Null(ChargeNoticeService.RuleFor(cfg, 3));
+    }
+
+    [Fact]
+    public void Rules_Daily_TwoSlotsPerDayUntilPaid()
+    {
+        var cfg = new ChargeNoticeService.Config(true, new() { "WHATSAPP" }, new[] { 3 }, true, new[] { 1 }, 9, 15, true);
+        Assert.Null(ChargeNoticeService.RuleFor(cfg, 4, new DateTime(2026, 11, 25, 8, 0, 0)));
+        Assert.Equal("daily:20261125:1", ChargeNoticeService.RuleFor(cfg, 4, new DateTime(2026, 11, 25, 10, 0, 0)));
+        Assert.Equal("daily:20261125:2", ChargeNoticeService.RuleFor(cfg, 4, new DateTime(2026, 11, 25, 16, 0, 0)));
+        Assert.Equal("daily:20261126:1", ChargeNoticeService.RuleFor(cfg, 5, new DateTime(2026, 11, 26, 9, 30, 0)));
+        Assert.Equal("before:3", ChargeNoticeService.RuleFor(cfg, -3));
     }
 
     [Fact]

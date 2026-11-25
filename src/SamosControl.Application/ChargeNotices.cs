@@ -26,11 +26,12 @@ public class ChargeNoticeService
     private readonly WhatsAppService _wa;
     private readonly IEmailSender _email;
     private readonly BillingService _billing;
+    private readonly PayLinkSigner _payLinks;
 
-    public ChargeNoticeService(AppDbContext db, SettingsService settings, WhatsAppService wa, IEmailSender email, BillingService billing)
-    { _db = db; _settings = settings; _wa = wa; _email = email; _billing = billing; }
+    public ChargeNoticeService(AppDbContext db, SettingsService settings, WhatsAppService wa, IEmailSender email, BillingService billing, PayLinkSigner payLinks)
+    { _db = db; _settings = settings; _wa = wa; _email = email; _billing = billing; _payLinks = payLinks; }
 
-    public sealed record Config(bool Enabled, HashSet<string> Channels, int[] Before, bool OnDue, int[] After, int Hour);
+    public sealed record Config(bool Enabled, HashSet<string> Channels, int[] Before, bool OnDue, int[] After, int Hour, int Hour2 = 15, bool Daily = true);
 
     public Config Load()
     {
@@ -38,18 +39,26 @@ public class ChargeNoticeService
         var channels = (_settings.Get(SettingKeys.NoticeChannels) ?? "whatsapp,email")
             .Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim().ToUpperInvariant()).ToHashSet();
         var hour = int.TryParse(_settings.Get(SettingKeys.NoticeHour), out var h) && h is >= 0 and <= 23 ? h : 9;
+        var hour2 = int.TryParse(_settings.Get(SettingKeys.NoticeHour2), out var h2) && h2 is >= 0 and <= 23 ? h2 : Math.Max(15, hour + 1);
         return new(Bool(SettingKeys.NoticeEnabled, false), channels, Days(_settings.Get(SettingKeys.NoticeDaysBefore) ?? "3"),
-            Bool(SettingKeys.NoticeOnDue, true), Days(_settings.Get(SettingKeys.NoticeDaysAfter) ?? "1,5,10"), hour);
+            Bool(SettingKeys.NoticeOnDue, true), Days(_settings.Get(SettingKeys.NoticeDaysAfter) ?? "1,5,10"), hour, hour2, Bool(SettingKeys.NoticeDailyOverdue, true));
     }
 
     public static int[] Days(string s) =>
         s.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(x => int.TryParse(x, out var n) ? n : -1)
          .Where(n => n > 0 && n <= 365).Distinct().OrderBy(n => n).ToArray();
 
-    /// <summary>Which rule (if any) applies to the charge today. daysLate &lt; 0 means not yet due.</summary>
-    public static string? RuleFor(Config cfg, int daysLate)
+    /// <summary>Which rule (if any) applies to the charge now. daysLate &lt; 0 means not yet due.
+    /// No vencimento e em atraso (modo diário) vale uma regra por dia e por horário (2 avisos/dia) até a cobrança ser paga.</summary>
+    public static string? RuleFor(Config cfg, int daysLate, DateTime? now = null)
     {
         if (daysLate < 0) return cfg.Before.Contains(-daysLate) ? $"before:{-daysLate}" : null;
+        if (cfg.Daily)
+        {
+            var t = now ?? AppTime.Now;
+            var slot = t.Hour >= Math.Max(cfg.Hour, cfg.Hour2) ? 2 : t.Hour >= Math.Min(cfg.Hour, cfg.Hour2) ? 1 : 0;
+            return slot == 0 ? null : $"daily:{t:yyyyMMdd}:{slot}";
+        }
         if (daysLate == 0) return cfg.OnDue ? "due" : null;
         return cfg.After.Contains(daysLate) ? $"after:{daysLate}" : null;
     }
@@ -62,15 +71,15 @@ public class ChargeNoticeService
         return Fill(tpl, ch, daysLate);
     }
 
-    private static string Fill(string tpl, Charge ch, int daysLate)
+    private string Fill(string tpl, Charge ch, int daysLate)
     {
         var vars = new Dictionary<string, string?>
         {
             // O PIX copia-e-cola nunca é enviado em texto puro (gera cobrança bancária repetida); forçamos a variável a
             // ficar vazia para que qualquer linha com {pix} (padrão ou template antigo customizado) seja descartada.
-            // O cliente paga Pix OU boleto abrindo o link, que já traz os dois (QR code e código de barras) juntos.
+            // O cliente paga Pix OU boleto abrindo o link do Samos Control, que mostra os dois (QR code e código de barras) juntos.
             ["nome"] = ch.Customer?.Name, ["valor"] = ContractService.Money(ch.Amount), ["vencimento"] = ch.DueDate.ToString("dd/MM/yyyy"),
-            ["descricao"] = ch.ServiceName ?? "serviço", ["link"] = ch.InvoiceUrl, ["pix"] = null,
+            ["descricao"] = ch.ServiceName ?? "serviço", ["link"] = _payLinks.Url(ch.Id), ["pix"] = null,
             ["dias"] = Math.Abs(daysLate).ToString()
         };
         // A line whose placeholder has no value (e.g. a charge without PIX) is dropped instead of leaving a dangling label.
@@ -130,8 +139,8 @@ public class ChargeNoticeService
         var notice = await _db.ChargeNotices.FirstOrDefaultAsync(n => n.ChargeId == ch.Id && n.Rule == rule && n.Channel == channel, ct);
         if (notice is { Success: true } || notice is { Attempts: >= MaxAttempts }) return null;
 
-        // Never more than one automatic notice per charge and channel in 20h, whatever the rule (protects against rule/config changes and repeated runs).
-        var since = DateTime.UtcNow.AddHours(-20);
+        // Never more than one automatic notice per charge and channel in 20h (4h for the twice-a-day overdue rule), whatever the rule (protects against rule/config changes and repeated runs).
+        var since = DateTime.UtcNow.AddHours(rule.StartsWith("daily:") ? -4 : -20);
         if (await _db.ChargeNotices.AnyAsync(n => n.ChargeId == ch.Id && n.Channel == channel && n.Success && n.SentAt > since, ct)) return null;
         // A failed attempt is retried only after 1h, so a broken channel does not burn its 3 attempts within a single run.
         if (notice is { Success: false } && notice.UpdatedAt > DateTime.UtcNow.AddHours(-1)) return null;
@@ -157,20 +166,8 @@ public class ChargeNoticeService
         return notice.Success;
     }
 
-    /// <summary>Charges created before the link was stored (or never refreshed) get it pulled from the provider; a notice without payment link is never sent.</summary>
-    private async Task EnsureLinkAsync(Charge ch, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(ch.InvoiceUrl))
-        {
-            try { await _billing.RefreshAsync(ch.Id, ct); }
-            catch (Exception ex) when (ex is IntegrationException or HttpRequestException) { }
-        }
-        if (string.IsNullOrWhiteSpace(ch.InvoiceUrl)) throw new InvalidOperationException("Cobrança sem link de pagamento (não foi possível obter no provedor).");
-    }
-
     private async Task DeliverAsync(Charge ch, int late, string channel, string to, CancellationToken ct)
     {
-        await EnsureLinkAsync(ch, ct);
         var text = Render(ch, late);
         if (channel == WhatsApp)
         {

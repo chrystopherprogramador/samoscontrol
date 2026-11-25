@@ -133,6 +133,8 @@ public static class SettingKeys
     public const string NoticeOnDue = "COBRANCA_AVISO_NO_VENCIMENTO";
     public const string NoticeDaysAfter = "COBRANCA_DIAS_APOS";
     public const string NoticeHour = "COBRANCA_HORA_ENVIO";
+    public const string NoticeHour2 = "COBRANCA_HORA_ENVIO_2";
+    public const string NoticeDailyOverdue = "COBRANCA_REPETIR_DIARIO";
     public const string NoticeMsgBefore = "COBRANCA_MSG_ANTES";
     public const string NoticeMsgDue = "COBRANCA_MSG_VENCIMENTO";
     public const string NoticeMsgAfter = "COBRANCA_MSG_ATRASO";

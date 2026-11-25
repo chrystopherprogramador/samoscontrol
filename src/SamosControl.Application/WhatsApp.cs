@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -570,23 +570,6 @@ public class WhatsAppService
             .OrderBy(m => m.Id).Take(20)
             .Select(m => new { m.Id, m.ConversationId, m.Body, Name = m.Conversation!.ContactName, m.Conversation.Phone, m.Conversation.SellerId }).ToListAsync();
         return rows.Select(r => (r.Id, r.ConversationId, string.IsNullOrWhiteSpace(r.Name) ? r.Phone : r.Name!, (r.Body ?? "").Truncate(120), r.SellerId)).ToList();
-    }
-
-    public async Task SendChargeLinkAsync(int chargeId, int? userId)
-    {
-        var ch = await _db.Charges.Include(c => c.Customer).FirstOrDefaultAsync(c => c.Id == chargeId) ?? throw new KeyNotFoundException();
-        var phone = ch.Customer?.WhatsApp ?? ch.Customer?.Phone ?? throw new InvalidOperationException("Cliente sem WhatsApp/telefone.");
-        var overdue = ch.DueDate.Date < DateTime.UtcNow.Date;
-        // O PIX copia-e-cola nunca vai em texto puro (gera cobrança bancária repetida): o link abre uma página com Pix e boleto juntos.
-        // Em atraso, manda só o link (incentiva o Pix, que compensa na hora); no prazo, manda também o PDF do boleto em anexo.
-        var text = $"Olá, {ch.Customer!.Name}! Segue sua cobrança de {ch.Amount:C2} com vencimento em {ch.DueDate:dd/MM/yyyy}.\n" +
-                   (ch.InvoiceUrl != null ? $"Pagamento (Pix ou boleto): {ch.InvoiceUrl}\n" : "");
-        if (!overdue && !string.IsNullOrWhiteSpace(ch.BoletoPdfUrl))
-        {
-            var pdf = await TryDownloadPdfAsync(ch.BoletoPdfUrl);
-            if (pdf != null) { await SendDocumentAsync(phone, pdf, $"boleto-{ch.Id}.pdf", text, userId); return; }
-        }
-        await SendTextAsync(phone, text, userId);
     }
 
     /// <summary>Baixa o PDF do boleto para anexar na mensagem; não falha o envio caso o link esteja indisponível (manda só o texto).</summary>
